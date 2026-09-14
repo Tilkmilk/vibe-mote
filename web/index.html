@@ -1,0 +1,3678 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>遥控器控制台</title>
+<style>
+/* ===================== 主题变量（风格：Radix Colors） =====================
+   色值直接取自 Radix 官方色阶的 dark 变体（@radix-ui/colors），
+   并且沿用它的**12 级语义**——每一级该用在哪是规定好的，不是随便挑的：
+
+     1–2   背景（1 页面底 / 2 卡片表面）
+     3–5   交互控件（3 底 / 4 hover / 5 active 选中）
+     6–8   描边与分隔（6 细描边 / 7 控件描边 / 8 hover 描边）
+     9–10  实心色（9 底 / 10 hover）—— 用于主按钮
+     11–12 文本（11 次要 / 12 主要）
+
+   所以「高级」的来源是：**灰阶层次差得极小 + 全靠 1px 描边分层 + 几乎不用阴影**。
+   换风格时只动这一个块，下面的组件规则一个都不用改。
+   ===================================================================== */
+:root{
+  /* ---- 灰阶：中性冷灰（Radix slate light）—— 不用偏紫/偏暖的灰 ---- */
+  --gray-1:#fcfcfd;
+  --gray-2:#f9f9fb;
+  --gray-3:#f0f0f3;
+  --gray-4:#e8e8ec;
+  --gray-5:#e0e1e6;
+  --gray-6:#d9d9e0;
+  --gray-7:#cdced6;
+  --gray-8:#b9bbc6;
+  --gray-9:#8b8d98;
+  --gray-10:#80838d;
+  --gray-11:#60646c;
+  --gray-12:#1c2024;
+
+  /* ---- 强调色：以 **DeepSeek 品牌蓝 #4D6BFE** 为中心派生的 12 级 ----
+         级次语义沿用 Radix：1-2 背景 / 3-5 交互 / 6-8 描边 / 9-10 实心 / 11-12 文本 */
+  --accent-1:#f7f9ff;
+  --accent-2:#eff3ff;
+  --accent-3:#e1e8ff;
+  --accent-4:#d2dbff;
+  --accent-5:#c0cdff;
+  --accent-6:#aabaff;
+  --accent-7:#8fa3fb;
+  --accent-8:#6c85f8;
+  --accent-9:#4d6bfe;   /* ← DeepSeek 品牌蓝 */
+  --accent-10:#3f5be8;
+  --accent-11:#3b4fd8;
+  --accent-12:#1e2a6b;
+
+  /* ---- 语义色：Radix green / amber / red（light 变体）---- */
+  --ok:#30a46c;   --ok-3:#e6f6eb;   --ok-6:#adddc0;   --ok-text:#30a46c;  --ok-12:#193b2d;
+  --warn:#ffc53d; --warn-3:#fff7c2; --warn-6:#f3d673; --warn-text:#e2a336; --warn-12:#4f3422;
+  --bad:#e5484d;  --bad-3:#feebec;  --bad-4:#ffdbdc;  --bad-6:#fdbdbe;   --bad-text:#e5484d; --bad-12:#641723;
+
+  /* ---- 语义映射：组件只用下面这些名字 ---- */
+  /* 浅色下：页面浅灰、卡片纯白、侧边栏更浅一层，全靠 1px 描边分层 */
+  --bg:var(--gray-2);
+  --panel:#ffffff;
+  --panel-2:var(--gray-1);
+  --elevated:#ffffff;
+  --elevated-hover:var(--gray-3);
+  --hover:var(--gray-3);
+  --selected:var(--accent-3);
+  --line:var(--gray-6);
+  --line-soft:var(--gray-5);
+  --line-strong:var(--gray-6);
+  --fg:var(--gray-12);
+  --muted:var(--gray-11);
+  --muted-2:var(--gray-10);
+  --accent:var(--accent-9);
+  --accent-hover:var(--accent-10);
+  --accent-fg:#ffffff;
+  --focus:var(--accent-8);
+  /* 键帽（遥控器按键）：白键帽 + 极细下沿，悬停泛蓝、按下实心蓝 */
+  --key-bg:#ffffff;
+  --key-hover:var(--accent-2);
+  --key-hover-border:var(--accent-7);
+  --key-edge:0 1px 0 rgba(28,32,36,.05);
+
+  /* ---- 形状：比 Radix 默认再圆一点，观感更清爽 ---- */
+  --radius:12px;
+  --radius-sm:8px;
+  --radius-pill:999px;
+
+  /* ---- 阴影与光晕：浅色阴影要更柔更散，才不显脏 ---- */
+  --shadow-1:0 1px 2px rgba(28,32,36,.06),0 1px 3px rgba(28,32,36,.05);
+  --shadow-2:0 14px 34px -14px rgba(28,32,36,.28);
+  --glow:0 0 0 1px rgba(77,107,254,.30),0 8px 20px -10px rgba(77,107,254,.38);
+
+  /* ---- 动效：全局统一曲线与时长 ---- */
+  --ease:cubic-bezier(.2,.8,.2,1);
+  --dur:.16s;
+  --dur-slow:.24s;
+
+  /* ---- 间距节奏（4 的倍数）---- */
+  --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px; --sp-5:24px; --sp-6:32px;
+
+  /* ---- 字号层级 ---- */
+  --fs-xs:11.5px; --fs-sm:12.5px; --fs-base:13.5px; --fs-lg:16px; --fs-xl:20px;
+}
+
+/* ===================== 深色主题（?theme=dark 或界面开关切回来） =====================
+   同一套级次语义，换 Radix 的 dark 变体；强调色仍是 DeepSeek 蓝，按深色档调过。
+   ===================================================================== */
+[data-theme="dark"]{
+  /* 灰阶：slate dark */
+  --gray-1:#111113;
+  --gray-2:#18191b;
+  --gray-3:#212225;
+  --gray-4:#272a2d;
+  --gray-5:#2e3135;
+  --gray-6:#363a3f;
+  --gray-7:#43484e;
+  --gray-8:#5a6169;
+  --gray-9:#696e77;
+  --gray-10:#777b84;
+  --gray-11:#b0b4ba;
+  --gray-12:#edeef0;
+  /* 强调色：DeepSeek 蓝的深色档 */
+  --accent-1:#0d1020;
+  --accent-2:#121731;
+  --accent-3:#1a2248;
+  --accent-4:#1f2a5e;
+  --accent-5:#253273;
+  --accent-6:#2d3c8a;
+  --accent-7:#37479f;
+  --accent-8:#4255ba;
+  --accent-9:#4d6bfe;
+  --accent-10:#5f7bff;
+  --accent-11:#a9b9ff;
+  --accent-12:#dbe2ff;
+  /* 语义色：dark 变体（浅色那套的深绿/深黄在深底上看不清） */
+  --ok:#30a46c;   --ok-3:#132d21;   --ok-6:#20573e;   --ok-text:#3dd68c;  --ok-12:#b1f1cb;
+  --warn:#ffc53d; --warn-3:#302008; --warn-6:#5c3d05; --warn-text:#ffca16; --warn-12:#ffe7b3;
+  --bad:#e5484d;  --bad-3:#3b1219;  --bad-4:#500f1c;  --bad-6:#72232d;   --bad-text:#ff9592; --bad-12:#ffd1d9;
+  /* 语义关系：深色下卡片比页面更亮 */
+  --bg:var(--gray-1);
+  --panel:var(--gray-2);
+  --panel-2:var(--accent-1);
+  --elevated:var(--gray-3);
+  --elevated-hover:var(--gray-4);
+  --hover:var(--gray-3);
+  --selected:var(--accent-4);
+  --line:var(--gray-6);
+  --line-soft:var(--gray-5);
+  --line-strong:var(--gray-8);
+  --fg:var(--gray-12);
+  --muted:var(--gray-11);
+  --muted-2:var(--gray-10);
+  --accent-fg:#ffffff;
+  --focus:var(--accent-8);
+  /* 键帽：深色下是深灰键帽 + 顶部一点高光 */
+  --key-bg:var(--gray-3);
+  --key-hover:var(--gray-4);
+  --key-hover-border:var(--gray-8);
+  --key-edge:0 1px 0 rgba(255,255,255,.035);
+  --shadow-1:0 1px 2px rgba(0,0,0,.24);
+  --shadow-2:0 12px 34px -14px rgba(0,0,0,.72);
+  --glow:0 0 0 1px rgba(77,107,254,.45),0 8px 22px -10px rgba(77,107,254,.55);
+}
+/* 深色下顶部蓝光可以更明显一点 */
+[data-theme="dark"] body::before{
+  background:
+    radial-gradient(820px 340px at 22% -12%, rgba(77,107,254,.20), transparent 68%),
+    radial-gradient(620px 300px at 88% -18%, rgba(77,107,254,.12), transparent 70%);
+}
+[data-theme="dark"] .topbar{background:rgba(13,16,32,.82)}
+[data-theme="dark"] .log-box{background:var(--gray-1)}
+[data-theme="dark"] .switch input::after{background:var(--gray-12)}
+[data-theme="dark"] ::selection{background:rgba(77,107,254,.30)}
+
+/* 键盘可达性：统一 focus 环（鼠标点击不显示，Tab 才显示） */
+:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+/* 顶部一团很淡的紫光 —— 让整体"亮"起来，是最省力的清爽感来源 */
+body::before{
+  content:"";position:fixed;inset:0 0 auto 0;height:420px;pointer-events:none;z-index:0;
+  background:
+    radial-gradient(880px 380px at 20% -14%, rgba(77,107,254,.11), transparent 66%),
+    radial-gradient(660px 320px at 88% -20%, rgba(77,107,254,.07), transparent 70%);
+}
+.app{position:relative;z-index:1}
+/* 数字对齐：状态数字/日志时间戳不跳动 */
+.tabnum,.result-line,.log-line{font-variant-numeric:tabular-nums}
+/* 细滚动条（默认滚动条很破坏精致感） */
+*{scrollbar-width:thin;scrollbar-color:var(--gray-6) transparent}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--gray-6);border:3px solid transparent;border-radius:999px;background-clip:content-box}
+::-webkit-scrollbar-thumb:hover{background:var(--gray-7);background-clip:content-box}
+/* 尊重系统的"减少动态效果" */
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.01ms !important;animation-iteration-count:1 !important;transition-duration:.01ms !important}
+}
+*{box-sizing:border-box}
+[hidden]{display:none !important}
+html,body{margin:0;padding:0;max-width:100%}
+body{
+  background:var(--bg);
+  color:var(--fg);
+  font-family:system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;
+  font-size:14px;
+  line-height:1.55;
+  overflow-x:hidden;
+  -webkit-font-smoothing:antialiased;
+}
+::selection{background:rgba(76,141,255,.32)}
+
+/* ===================== 骨架布局 ===================== */
+.app{display:flex;align-items:stretch;min-height:100vh}
+.sidebar{
+  flex:0 0 200px;width:200px;
+  background:var(--panel-2);
+  border-right:1px solid var(--line);
+  padding:18px 14px;
+  display:flex;flex-direction:column;gap:18px;
+  position:sticky;top:0;height:100vh;
+  overflow-y:auto;
+}
+.main{flex:1 1 auto;min-width:0;display:flex;flex-direction:column}
+.topbar{
+  display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;
+  padding:16px 24px;border-bottom:1px solid var(--line);
+  background:rgba(255,255,255,.82);backdrop-filter:blur(10px);
+  position:sticky;top:0;z-index:5;
+}
+.page-title{font-size:16px;font-weight:600;letter-spacing:.2px;display:flex;align-items:center;gap:9px}
+.page-title::before{content:"";width:4px;height:17px;border-radius:2px;background:var(--accent)}
+.content{padding:22px 24px 44px;width:100%;max-width:1080px}
+
+/* ===================== 侧边栏 ===================== */
+.brand{display:flex;align-items:center;gap:10px;min-width:0}
+.brand-mark{
+  flex:0 0 32px;width:32px;height:32px;border-radius:var(--radius-sm);
+  background:var(--accent-3);
+  border:1px solid var(--accent-8);display:flex;align-items:center;justify-content:center;color:var(--accent-11);
+}
+.brand-mark svg{width:17px;height:17px}
+.brand-title{font-size:14px;font-weight:600;white-space:nowrap}
+.brand-sub{font-size:11px;color:var(--muted-2);white-space:nowrap;letter-spacing:.2px}
+.nav{display:flex;flex-direction:column;gap:3px}
+.nav-item{
+  position:relative;
+  display:flex;align-items:center;gap:10px;
+  padding:9px 10px;border-radius:10px;border:1px solid transparent;
+  background:transparent;color:var(--muted);font:inherit;font-size:13.5px;
+  cursor:pointer;text-align:left;
+  transition:background var(--dur) var(--ease),color var(--dur) var(--ease),border-color var(--dur) var(--ease);
+}
+.nav-item:hover{background:var(--hover);color:var(--fg)}
+.nav-item.active{background:var(--accent-3);border-color:var(--accent-6);color:var(--accent-12);box-shadow:0 1px 2px rgba(77,107,254,.07)}
+.nav-item.active svg{color:var(--accent-9)}
+/* 当前项的左侧指示条：比整块高亮更克制，也更"高级" */
+.nav-item.active::before{
+  content:"";position:absolute;left:-14px;top:50%;transform:translateY(-50%);
+  width:3px;height:18px;border-radius:2px;background:var(--accent);opacity:1;
+}
+.nav-item svg{width:16px;height:16px;flex:0 0 16px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.conn{display:flex;align-items:center;gap:8px;margin-top:auto;padding:9px 10px;border-top:1px solid var(--line-soft);font-size:12.5px;color:var(--muted)}
+.conn-dot{width:8px;height:8px;border-radius:50%;background:var(--muted-2);flex:0 0 8px;box-shadow:0 0 0 3px rgba(255,255,255,.03)}
+.conn.on .conn-dot{background:var(--ok-text);box-shadow:0 0 0 3px rgba(61,214,140,.16)}
+.conn.off .conn-dot{background:var(--bad-text);box-shadow:0 0 0 3px rgba(255,149,146,.16)}
+.conn.idle .conn-dot{background:var(--warn-text);box-shadow:0 0 0 3px rgba(255,202,22,.16)}
+.conn.on{color:var(--ok-12)}
+
+/* ===================== 信号灯 ===================== */
+.signal{display:flex;align-items:center;gap:9px;font-size:12.5px;color:var(--muted);border:1px solid var(--line);background:var(--gray-2);padding:6px 12px;border-radius:999px;max-width:100%}
+.signal #sigText{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sig-dot{width:9px;height:9px;border-radius:50%;background:var(--gray-7);flex:0 0 9px;transition:background .2s}
+.signal.flash .sig-dot{animation:sigflash .6s ease}
+.signal.mapped .sig-dot{background:var(--ok-text)}
+.signal.unmapped .sig-dot{background:var(--warn-text)}
+@keyframes sigflash{0%{transform:scale(1);box-shadow:0 0 0 0 rgba(77,107,254,.55)}60%{transform:scale(1.35);box-shadow:0 0 0 7px rgba(77,107,254,0)}100%{transform:scale(1)}}
+
+/* ===================== 通用组件 ===================== */
+.card{background:var(--panel);border:1px solid var(--line-strong);border-radius:var(--radius);padding:16px 18px;box-shadow:var(--shadow-1);min-width:0}
+.card + .card{margin-top:14px}
+.card-title{font-size:13px;font-weight:600;color:var(--gray-12);letter-spacing:.3px;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.card-title::before{content:"";width:4px;height:15px;border-radius:2px;background:var(--accent);opacity:1}
+.btn{
+  font:inherit;font-size:13px;padding:8px 13px;border-radius:var(--radius-sm);
+  border:1px solid var(--line);background:var(--elevated);color:var(--fg);
+  cursor:pointer;white-space:nowrap;
+  transition:background var(--dur) var(--ease),border-color var(--dur) var(--ease),transform .06s var(--ease);
+}
+.btn:hover{background:var(--elevated-hover);border-color:var(--line-strong)}
+.btn:active{transform:translateY(1px)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-fg);font-weight:600}
+.btn.primary:hover{background:var(--accent-hover);border-color:var(--accent-hover);box-shadow:var(--glow)}
+.btn.danger{color:var(--bad-12);border-color:var(--bad-6);background:var(--bad-3)}
+.btn.danger:hover{background:var(--bad-4);border-color:var(--bad-6)}
+.btn.armed{border-color:var(--accent-8);color:var(--accent-12);background:var(--accent-4)}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.toolbar{display:flex;gap:9px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
+.ml-auto{margin-left:auto}
+.hint{font-size:11.6px;color:var(--muted-2);margin-top:6px;line-height:1.5}
+.hint a.lnk{color:var(--accent-11);text-decoration:underline;text-underline-offset:2px;word-break:break-all}
+.hint a.lnk:hover{color:var(--accent-9)}
+.note{font-size:13px;color:var(--muted);margin:0;line-height:1.7}
+.note code{background:var(--gray-3);border:1px solid var(--line);border-radius:6px;padding:1px 6px;font-family:ui-monospace,Consolas,"Cascadia Mono",monospace;font-size:12.2px;color:#a8c6ff;word-break:break-all}
+.field + .field{margin-top:13px}
+.field > label{display:block;font-size:12px;color:var(--muted);margin-bottom:6px;letter-spacing:.2px}
+input[type=text],select,textarea{
+  font:inherit;font-size:13px;color:var(--fg);background:var(--gray-2);
+  border:1px solid var(--line);border-radius:9px;padding:8px 10px;
+  outline:none;max-width:100%;min-width:0;transition:border-color .15s,box-shadow .15s;
+}
+input[type=text]{width:100%}
+input[type=text][readonly]{color:var(--accent-11);background:var(--gray-2)}
+select{cursor:pointer;min-width:150px}
+textarea{width:100%;min-height:88px;resize:vertical;line-height:1.6}
+input[type=text]:focus,select:focus,textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(76,141,255,.12)}
+.inline-input{max-width:280px;flex:1 1 200px}
+
+/* 开关 */
+.switch{display:inline-flex;align-items:center;gap:9px;cursor:pointer;user-select:none;font-size:13px;color:var(--fg)}
+.switch input{appearance:none;-webkit-appearance:none;width:36px;height:20px;border-radius:var(--radius-pill);background:var(--gray-5);border:1px solid var(--line);position:relative;transition:background var(--dur) var(--ease),border-color var(--dur) var(--ease);cursor:pointer;flex:0 0 36px;margin:0}
+.switch input:checked{background:var(--accent);border-color:var(--accent)}
+.switch input::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#ffffff;box-shadow:0 1px 2px rgba(28,32,36,.28);transition:transform var(--dur) var(--ease)}
+.switch input:checked::after{transform:translateX(16px)}
+
+/* 滑块 */
+input[type=range]{appearance:none;-webkit-appearance:none;width:100%;max-width:300px;height:4px;border-radius:var(--radius-pill);background:var(--gray-5);outline:none;cursor:pointer}
+input[type=range]::-webkit-slider-thumb{appearance:none;-webkit-appearance:none;width:16px;height:16px;border-radius:50%;background:var(--accent);border:2px solid var(--bg);cursor:pointer}
+input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;background:var(--accent);border:2px solid var(--bg);cursor:pointer}
+
+/* 修饰键多选 */
+.mods{display:flex;flex-wrap:wrap;gap:6px}
+.mod{display:inline-flex;align-items:center;gap:6px;padding:5px 10px;border:1px solid var(--line);border-radius:8px;background:var(--elevated);font-size:12.4px;cursor:pointer;user-select:none;transition:border-color .15s,background .15s,color .15s}
+.mod input{appearance:none;-webkit-appearance:none;width:14px;height:14px;border-radius:4px;border:1px solid var(--gray-7);background:var(--gray-2);position:relative;cursor:pointer;margin:0;flex:0 0 14px}
+.mod input:checked{background:var(--accent);border-color:var(--accent)}
+.mod input:checked::after{content:"";position:absolute;left:4px;top:1px;width:4px;height:8px;border:solid var(--accent-fg);border-width:0 2px 2px 0;transform:rotate(45deg)}
+.mod:has(input:checked){border-color:var(--accent-8);background:var(--accent-4);color:var(--gray-12)}
+
+/* 状态行 */
+.rows{display:flex;flex-direction:column}
+.srow{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line-soft);font-size:13px;min-width:0}
+.srow:last-child{border-bottom:none}
+.srow .k{color:var(--muted);flex:0 0 108px}
+.srow .v{color:var(--fg);min-width:0;word-break:break-word;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.srow .sub{font-size:11.6px;color:var(--muted-2)}
+/* 小号按钮：给「首次准备」清单和行内动作用 */
+.btn.sm{font-size:12px;padding:5px 11px;border-radius:8px}
+/* 「首次准备」清单：标签要比普通 srow 宽（"虚拟声卡"这类名字放得下），右边挂按钮。
+   margin-left:auto 把按钮推到行的最右，几行按钮就对齐成一条竖线。 */
+#setupRows .k{flex:0 0 176px;display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+#setupRows .btn{margin-left:auto}
+.setup-tag{font-size:10.5px;line-height:1.5;padding:1px 6px;border-radius:var(--radius-pill);border:1px solid var(--line-strong);color:var(--muted-2);white-space:nowrap}
+.setup-tag.must{color:var(--bad-12);border-color:var(--bad-6);background:var(--bad-3)}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--muted-2);flex:0 0 8px}
+.dot.ok{background:var(--ok)}
+.dot.bad{background:var(--bad)}
+.dot.warn{background:var(--warn)}
+
+/* 状态大卡 */
+.stat-hero{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;background:linear-gradient(180deg,var(--accent-1),var(--panel));border-color:var(--accent-6)}
+.hero-main{min-width:0}
+.hero-line{display:flex;align-items:center;gap:10px;font-size:17px;font-weight:600}
+.hero-meta{font-size:12.4px;color:var(--muted);margin-top:6px}
+.pill{font-size:12px;font-weight:600;padding:3px 10px;border-radius:var(--radius-pill);border:1px solid var(--accent-6);background:var(--accent-2);color:var(--accent-11)}
+.pill.ok{color:var(--ok-12);border-color:var(--ok-6);background:var(--ok-3)}
+.pill.bad{color:var(--bad-12);border-color:var(--bad-6);background:var(--bad-3)}
+.pill.warn{color:var(--warn-12);border-color:var(--warn-6);background:var(--warn-3)}
+.hero-actions{display:flex;gap:9px;flex-wrap:wrap}
+
+/* 危险区（清理 / 卸载）：逐项勾选清单 */
+.danger-zone{border-color:var(--bad-6)}
+.danger-zone .card-title::before{background:var(--bad)}
+.del-list{margin:10px 0 0}
+.del-item{
+  display:flex;align-items:flex-start;gap:10px;padding:8px 10px;margin-bottom:6px;
+  border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--gray-3);
+  cursor:pointer;font-size:12.6px;transition:border-color var(--dur) var(--ease),background var(--dur) var(--ease);
+}
+.del-item:hover{border-color:var(--line-strong)}
+.del-item:has(input:checked){border-color:var(--bad-6);background:var(--bad-3)}
+.del-item input{
+  flex:0 0 15px;width:15px;height:15px;margin:2px 0 0;
+  appearance:none;-webkit-appearance:none;border:1px solid var(--gray-7);
+  border-radius:4px;background:var(--panel);position:relative;cursor:pointer;
+}
+.del-item input:checked{background:var(--bad);border-color:var(--bad)}
+.del-item input:checked::after{
+  content:"";position:absolute;left:4px;top:1px;width:4px;height:8px;
+  border:solid #fff;border-width:0 2px 2px 0;transform:rotate(45deg);
+}
+.del-item .del-name{font-weight:600;color:var(--gray-12);flex:0 0 auto}
+.del-item .del-desc{color:var(--muted);margin-left:auto;text-align:right;max-width:56%;line-height:1.5}
+.del-item code{font-family:ui-monospace,Consolas,monospace;font-size:11.4px;background:var(--panel);border:1px solid var(--line);border-radius:4px;padding:0 4px}
+
+/* 提示条 */
+.banner{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;border-radius:var(--radius);padding:14px 16px;margin-top:14px;border:1px solid var(--warn-6);background:var(--warn-3)}
+.banner strong{font-size:13.5px}
+.banner-sub{font-size:12.2px;color:var(--warn-12);margin-top:3px;word-break:break-word}
+
+/* ===================== 按键映射页 ===================== */
+.keys-layout{display:grid;grid-template-columns:minmax(0,1fr) 312px;gap:16px;align-items:start}
+.pad-card{display:flex;flex-direction:column;align-items:center;gap:12px}
+.pad{display:flex;flex-direction:column;gap:12px;align-items:center;width:100%}
+.dpad{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));grid-template-areas:". up ." "left ok right" ". down .";gap:8px;width:100%;max-width:272px}
+.pad-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;width:100%}
+.pad-sep{width:100%;height:1px;background:var(--line)}
+.pad-side{display:flex;align-items:center;gap:10px;width:100%;justify-content:center;flex-wrap:wrap}
+.pad-side-label{font-size:11.6px;color:var(--muted-2);flex:0 0 auto}
+.pad-side-keys{display:flex;gap:8px;flex:1 1 160px;max-width:272px;min-width:0}
+.pad-side-keys .key{flex:1 1 0;min-width:0}
+.pad-tip{font-size:11.6px;color:var(--muted-2);text-align:center}
+.key{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
+  min-height:52px;min-width:0;padding:7px 6px;border-radius:var(--radius);
+  border:1px solid var(--gray-7);background:var(--key-bg);box-shadow:var(--key-edge);
+  color:var(--fg);font:inherit;cursor:pointer;text-align:center;
+  transition:transform .08s var(--ease),background var(--dur) var(--ease),border-color var(--dur) var(--ease),box-shadow var(--dur) var(--ease);
+}
+.key:hover{border-color:var(--key-hover-border);background:var(--key-hover)}
+.key .key-name{font-size:13px;font-weight:600;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.key .key-map{font-size:10.4px;color:var(--accent-11);line-height:1.25;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.key.unmapped{opacity:.58;border-style:dashed}
+.key.unmapped .key-map{color:var(--gray-9)}
+.key.selected{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent),0 0 0 3px rgba(77,107,254,.18)}
+.key.down{transform:scale(.94);background:var(--accent);border-color:var(--accent);color:var(--accent-fg);box-shadow:0 0 0 1px var(--accent),0 0 22px rgba(77,107,254,.42)}
+.key.pulse{animation:keypulse .5s ease}
+@keyframes keypulse{0%{box-shadow:0 0 0 0 rgba(76,141,255,.55)}100%{box-shadow:0 0 0 15px rgba(76,141,255,0)}}
+.key.locate{animation:keylocate 1.1s ease}
+@keyframes keylocate{0%,100%{border-color:var(--accent)}25%{box-shadow:0 0 0 6px rgba(76,141,255,.22)}}
+.mapping-panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px 16px 18px;position:sticky;top:78px;min-width:0}
+.mapping-head{font-size:13.5px;font-weight:600;margin-bottom:14px;display:flex;align-items:center;gap:8px}
+.mapping-head .badge{font-size:11px;font-weight:500;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:1px 8px}
+.mapping-empty{color:var(--muted-2);font-size:12.6px;line-height:1.7}
+.mapping-hint{font-size:11.4px;color:var(--muted-2);margin-top:10px;line-height:1.6;border-top:1px solid var(--line-soft);padding-top:10px}
+
+/* ===================== 结果 / 日志输出 ===================== */
+.result{margin-top:12px;border:1px solid var(--line);border-radius:var(--radius);background:var(--gray-1);padding:11px 13px;max-height:260px;overflow:auto}
+.result-line{font-family:ui-monospace,Consolas,"Cascadia Mono",monospace;font-size:12px;color:var(--gray-11);line-height:1.7;white-space:pre-wrap;word-break:break-word}
+.result-head{color:var(--accent-11)}
+.scan-list{margin-top:12px;display:flex;flex-direction:column;gap:6px}
+.scan-item{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;text-align:left;font:inherit;font-size:12.6px;color:var(--fg);background:var(--gray-3);border:1px solid var(--line);border-radius:var(--radius-sm);padding:9px 12px;cursor:pointer;transition:border-color var(--dur) var(--ease),background var(--dur) var(--ease);min-width:0}
+.scan-item:hover{border-color:var(--accent);background:#182231}
+.scan-item .scan-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.scan-item .scan-addr{font-family:ui-monospace,Consolas,monospace;font-size:11.8px;color:var(--muted);flex:0 0 auto}
+
+/* 预设方案卡片 */
+.profile-card{margin-bottom:14px;background:var(--accent-1);border-color:var(--accent-6)}
+.profile-row{align-items:flex-end}
+.field.compact{margin:0}
+.field.compact select{min-width:210px}
+.profile-preview{margin-top:12px;display:grid;grid-template-columns:repeat(auto-fill,minmax(178px,1fr));gap:6px}
+.profile-preview .pp{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px;background:var(--gray-3);border:1px solid var(--line);border-radius:var(--radius-sm);padding:6px 10px}
+.profile-preview .pp b{font-weight:600;color:var(--gray-12)}
+.profile-preview .pp span{font-family:ui-monospace,Consolas,monospace;font-size:11.5px;color:var(--accent-11)}
+.profile-preview .pp.unmapped span{color:var(--gray-9)}
+
+/* 日志页 */
+.log-toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+.log-box{
+  background:var(--gray-1);border:1px solid var(--line);border-radius:var(--radius);
+  padding:12px 14px;height:min(62vh,560px);overflow-y:auto;overflow-x:hidden;
+  font-family:ui-monospace,Consolas,"Cascadia Mono",monospace;font-size:12.2px;line-height:1.72;
+}
+.log-line{color:var(--gray-11);white-space:pre-wrap;word-break:break-word}
+.log-line.job{color:var(--accent-11)}
+.log-line.err{color:var(--bad-text)}
+.log-empty{color:var(--muted-2)}
+
+/* Toast */
+.toast-wrap{position:fixed;right:18px;bottom:18px;display:flex;flex-direction:column;gap:8px;z-index:50;max-width:min(340px,86vw)}
+.toast{border:1px solid var(--line);background:var(--elevated);color:var(--fg);border-radius:var(--radius);padding:10px 14px;font-size:12.8px;box-shadow:var(--shadow-2);animation:toastin .2s ease;word-break:break-word}
+.toast.bad{border-color:var(--bad-6);background:var(--bad-3);color:var(--bad-12)}
+@keyframes toastin{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+
+/* ===================== 语言切换（顶部，主题开关旁边那一类） ===================== */
+.topbar-right{display:flex;align-items:center;gap:10px;margin-left:auto;min-width:0}
+.lang-switch{
+  display:inline-flex;align-items:center;gap:6px;padding:3px 9px;
+  border:1px solid var(--line);background:var(--gray-2);border-radius:999px;
+}
+.lang-switch .lang-ico{font-size:13px;line-height:1;cursor:default}
+.lang-switch select{min-width:0;width:auto;border:0;background:transparent;padding:2px 0;font-size:12.5px;color:var(--fg)}
+.lang-switch select:focus{border-color:transparent;box-shadow:none}
+
+/* ===================== 响应式 ===================== */
+@media (max-width:1000px){
+  .keys-layout{grid-template-columns:1fr}
+  .mapping-panel{position:static}
+}
+@media (max-width:760px){
+  .app{flex-direction:column}
+  .sidebar{position:static;height:auto;width:auto;flex:0 0 auto;border-right:none;border-bottom:1px solid var(--line);padding:14px;gap:12px}
+  .nav{flex-direction:row;flex-wrap:wrap}
+  .nav-item{padding:7px 10px}
+  .conn{margin-top:4px;border-top:none;padding:4px 2px}
+  .topbar{padding:12px 14px}
+  .content{padding:16px 14px 36px}
+  .srow .k{flex:0 0 88px}
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-mark">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="7" y="2.5" width="10" height="19" rx="3"></rect>
+          <circle cx="12" cy="7.6" r="1.7"></circle>
+          <path d="M9.6 12.6h.01M12 12.6h.01M14.4 12.6h.01M9.6 15.4h4.8"></path>
+        </svg>
+      </div>
+      <div>
+        <div class="brand-title" data-i18n="brand.title">遥控器控制台</div>
+        <div class="brand-sub" data-i18n="brand.sub">Google TV 遥控器 → 键鼠</div>
+      </div>
+    </div>
+    <nav class="nav" id="nav">
+      <button class="nav-item active" data-page="status" type="button">
+        <svg viewBox="0 0 16 16"><path d="M1.5 8h2.8l1.6-4.2 2.6 8.4 1.8-4.2h4.2"></path></svg>
+        <span data-i18n="nav.status">状态</span>
+      </button>
+      <button class="nav-item" data-page="keys" type="button">
+        <svg viewBox="0 0 16 16"><rect x="1.4" y="4" width="13.2" height="8" rx="2"></rect><path d="M4.4 7.2h.01M6.9 7.2h.01M9.4 7.2h.01M11.9 7.2h.01M5.2 9.8h5.6"></path></svg>
+        <span data-i18n="nav.keys">按键映射</span>
+      </button>
+      <button class="nav-item" data-page="voice" type="button">
+        <svg viewBox="0 0 16 16"><rect x="6" y="1.6" width="4" height="7.6" rx="2"></rect><path d="M3.6 7.4a4.4 4.4 0 0 0 8.8 0M8 11.8v2.6M5.6 14.4h4.8"></path></svg>
+        <span data-i18n="nav.voice">语音</span>
+      </button>
+      <button class="nav-item" data-page="settings" type="button">
+        <svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="2.2"></circle><path d="M8 1.6v1.8M8 12.6v1.8M1.6 8h1.8M12.6 8h1.8M3.5 3.5l1.3 1.3M11.2 11.2l1.3 1.3M12.5 3.5l-1.3 1.3M4.8 11.2l-1.3 1.3"></path></svg>
+        <span data-i18n="nav.settings">设置</span>
+      </button>
+      <button class="nav-item" data-page="log" type="button">
+        <svg viewBox="0 0 16 16"><path d="M2.8 4h10.4M2.8 8h10.4M2.8 12h6.2"></path></svg>
+        <span data-i18n="nav.log">日志</span>
+      </button>
+    </nav>
+    <div class="conn idle" id="conn">
+      <span class="conn-dot"></span>
+      <span id="connText">连接中…</span>
+    </div>
+  </aside>
+
+  <main class="main">
+    <header class="topbar">
+      <div class="page-title" id="pageTitle">状态</div>
+      <div class="topbar-right">
+        <div class="signal" id="signal">
+          <span class="sig-dot"></span>
+          <span id="sigText" data-i18n="sig.wait">等待遥控器信号</span>
+        </div>
+        <!-- 🌐 语言切换：中文 / English。选择只记在 localStorage（外观偏好）+ 通知后端，绝不写进配置。 -->
+        <div class="lang-switch" data-i18n-title="lang.title" title="界面语言">
+          <span class="lang-ico" aria-hidden="true">🌐</span>
+          <select id="langSel" aria-label="Language">
+            <option value="zh">中文</option>
+            <option value="en">English</option>
+          </select>
+        </div>
+      </div>
+    </header>
+
+    <div class="content">
+      <!-- ==================== 状态 ==================== -->
+      <section class="page" id="page-status">
+        <div class="card stat-hero">
+          <div class="hero-main">
+            <div class="hero-line">
+              <span class="pill" id="heroPill" data-i18n="hero.checking">检测中</span>
+              <span id="heroText" data-i18n="hero.reading">正在读取客户端状态…</span>
+            </div>
+            <div class="hero-meta" id="heroMeta">—</div>
+          </div>
+          <div class="hero-actions">
+            <button class="btn primary" type="button" data-act="start" data-i18n="act.start">启动</button>
+            <button class="btn" type="button" data-act="stop" data-i18n="act.stop">停止</button>
+            <button class="btn" type="button" data-act="restart" data-i18n="act.restart">重启</button>
+          </div>
+        </div>
+
+        <div class="banner" id="depBanner" hidden>
+          <div>
+            <strong id="depBannerTitle" data-i18n="dep.bannerTitle">依赖不完整</strong>
+            <div class="banner-sub" id="depBannerText"></div>
+          </div>
+          <button class="btn primary" type="button" id="depBannerBtn" data-i18n="dep.bannerBtn">安装依赖</button>
+          <button class="btn" type="button" id="depBannerBtn2" hidden data-i18n="dep.bannerBtn2">全部安装</button>
+        </div>
+
+        <!-- 首次准备：把"用起来之前要过的几关"一次性摆在首页，每项一个按钮。
+             以前这几件事散在「设置」页的四个卡片里，新用户找不到，于是"语音键按了没反应"
+             全变成猜谜。必需的两项（依赖 / 虚拟声卡）不给过，语音和按键就是不能用的。 -->
+        <div class="card" id="setupCard">
+          <div class="card-title" data-i18n="setup.title">首次准备</div>
+          <div class="rows" id="setupRows">
+            <div class="srow"><span class="k" data-i18n="row.loading">正在读取…</span><span class="v"></span></div>
+          </div>
+          <div class="hint" id="setupHint"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title" data-i18n="card.state">运行状态</div>
+          <div class="rows" id="stateRows">
+            <div class="srow"><span class="k" data-i18n="nav.status">状态</span><span class="v" data-i18n="row.loading">正在读取…</span></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title" data-i18n="card.deps">依赖与版本</div>
+          <div class="rows" id="depsRows">
+            <div class="srow"><span class="k" data-i18n="row.deps">依赖</span><span class="v" data-i18n="row.loading">正在读取…</span></div>
+          </div>
+          <div class="result" id="installBox" hidden></div>
+        </div>
+      </section>
+
+      <!-- ==================== 按键映射 ==================== -->
+      <section class="page" id="page-keys" hidden>
+        <div class="card profile-card">
+          <div class="card-title" data-i18n="keys.profileTitle">预设方案：选应用 + 选输入法，一键配好整套</div>
+          <div class="row profile-row">
+            <div class="field compact">
+              <label for="profApp" data-i18n="keys.app">目标应用</label>
+              <select id="profApp"></select>
+            </div>
+            <div class="field compact">
+              <label for="profIme" data-i18n="keys.ime">输入法（决定语音键）</label>
+              <select id="profIme"></select>
+            </div>
+            <button class="btn primary" type="button" id="btnApplyProfile" data-i18n="keys.applyProfile">应用这套预设</button>
+          </div>
+          <div class="hint" id="profNote"></div>
+          <div class="profile-preview" id="profPreview"></div>
+          <div class="result" id="profResult" hidden></div>
+        </div>
+
+        <div class="toolbar">
+          <button class="btn" type="button" id="btnRecommended" data-i18n="keys.recommended">恢复推荐配置</button>
+          <button class="btn danger" type="button" id="btnClearAll" data-i18n="keys.clearAll">清空映射</button>
+          <button class="btn" type="button" id="btnExport" data-i18n="keys.export">导出</button>
+          <button class="btn" type="button" id="btnImport" data-i18n="keys.import">导入</button>
+          <label class="switch ml-auto" data-i18n-title="keys.locateTip" title="打开后，收到遥控器按键事件会自动选中并滚动到那个按键">
+            <input type="checkbox" id="locateToggle">
+            <span data-i18n="keys.locate">按下遥控器键来定位</span>
+          </label>
+        </div>
+
+        <div class="banner" style="margin-top:0">
+          <span data-i18n-html="keys.riskHtml">⚠ <strong>按键映射靠"注入"实现</strong>：程序会往系统的蓝牙 HID 驱动宿主里注入一个模块（要 <strong>一次</strong>管理员权限，点过「一键优化」后不再弹）。它可能被 <b>杀软误报/隔离</b>；少数带内核反作弊的 <b>游戏</b> 可能起不来；<b>公司/学校电脑</b> 建议先问 IT。<strong>语音功能完全不需要这一项</strong>。详见 README「已知的限制与风险」。</span>
+        </div>
+
+        <div class="keys-layout">
+          <div class="card pad-card">
+            <div class="pad" id="pad"></div>
+            <div class="pad-tip" data-i18n="keys.padTip">点任意按键编辑映射 · 遥控器按下时按钮会实时高亮</div>
+          </div>
+
+          <div class="mapping-panel" id="mappingPanel">
+            <div class="mapping-head" id="mappingHead">编辑映射</div>
+            <div class="mapping-empty" id="mappingEmpty" data-i18n="map.empty">从左侧选一个遥控器按键开始编辑。</div>
+
+            <div id="mappingForm" hidden>
+              <div class="field">
+                <label for="mapType" data-i18n="map.type">映射类型</label>
+                <select id="mapType">
+                  <option value="key" data-i18n="map.optKey">key · 单键</option>
+                  <option value="combo" data-i18n="map.optCombo">combo · 组合键</option>
+                  <option value="hold" data-i18n="map.optHold">hold · 按住不放</option>
+                  <option value="holdcombo" data-i18n="map.optHoldCombo">holdcombo · 按住组合键</option>
+                  <option value="mouse" data-i18n="map.optMouse">mouse · 鼠标</option>
+                  <option value="holdmouse" data-i18n="map.optHoldMouse">holdmouse · 按住鼠标</option>
+                  <option value="text" data-i18n="map.optText">text · 文本</option>
+                </select>
+              </div>
+
+              <div class="field" id="fieldKey">
+                <label for="mapValue" data-i18n="map.target">目标键</label>
+                <div class="row">
+                  <input type="text" id="mapValue" class="inline-input" readonly data-i18n-placeholder="map.capturePh" placeholder="点右侧按钮捕获">
+                  <button class="btn" type="button" id="mapCapture" data-i18n="map.capture">按键捕获</button>
+                </div>
+                <div class="hint" id="mapCaptureHint"></div>
+              </div>
+
+              <div class="field" id="fieldMods">
+                <label data-i18n="map.mods">修饰键</label>
+                <div class="mods" id="mapMods"></div>
+              </div>
+
+              <div class="field" id="fieldMouse">
+                <label for="mapMouse" data-i18n="map.mouse">鼠标动作</label>
+                <select id="mapMouse">
+                  <option value="wheel_up" data-i18n="mouse.wheelUp">滚轮上</option>
+                  <option value="wheel_down" data-i18n="mouse.wheelDown">滚轮下</option>
+                  <option value="left" data-i18n="mouse.optLeft">左键</option>
+                  <option value="right" data-i18n="mouse.optRight">右键</option>
+                  <option value="middle" data-i18n="mouse.optMiddle">中键</option>
+                </select>
+              </div>
+
+              <div class="field" id="fieldText">
+                <label for="mapText" data-i18n="map.text">文本内容</label>
+                <textarea id="mapText" data-i18n-placeholder="map.textPh" placeholder="按下遥控器键时输入的文本"></textarea>
+              </div>
+
+              <div class="row" style="margin-top:16px">
+                <button class="btn primary" type="button" id="btnSaveMap" data-i18n="map.save">保存这个映射</button>
+                <button class="btn danger" type="button" id="btnClearMap" data-i18n="map.clear">清除这个映射</button>
+              </div>
+              <div class="mapping-hint" id="mapPanelHint"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ==================== 语音 ==================== -->
+      <section class="page" id="page-voice" hidden>
+        <div class="card">
+          <div class="card-title" data-i18n="voice.title">语音键目标</div>
+
+          <div class="field">
+            <label for="voiceMode" data-i18n="voice.mode">模式</label>
+            <select id="voiceMode">
+              <option value="hold" data-i18n="voice.hold">按住</option>
+              <option value="tap" data-i18n="voice.tap">按一下</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <label data-i18n="voice.mods">修饰键</label>
+            <div class="mods" id="voiceMods"></div>
+          </div>
+
+          <div class="field">
+            <label for="voiceKey" data-i18n="voice.mainKey">主键</label>
+            <div class="row">
+              <input type="text" id="voiceKey" class="inline-input" readonly data-i18n-placeholder="map.capturePh" placeholder="点右侧按钮捕获">
+              <button class="btn" type="button" id="voiceCapture" data-i18n="map.capture">按键捕获</button>
+            </div>
+            <div class="hint" id="voiceCaptureHint"></div>
+          </div>
+
+          <div class="field">
+            <label for="voicePreset" data-i18n="voice.preset">输入法预设</label>
+            <select id="voicePreset">
+              <option value="" data-i18n="voice.pick">请选择…</option>
+              <option value="qwen" data-i18n="voice.qwen">千问输入法</option>
+              <option value="sogou" data-i18n="voice.sogou">搜狗语音输入</option>
+              <option value="wechat" data-i18n="voice.wechat">微信输入法</option>
+              <option value="win" data-i18n="voice.win">Windows 语音输入</option>
+              <option value="doubao" data-i18n="voice.doubao">豆包输入法</option>
+              <option value="custom" data-i18n="voice.custom">自定义</option>
+            </select>
+            <div class="hint" id="voiceTip"></div>
+          </div>
+
+          <div class="row" style="margin-top:16px">
+            <button class="btn primary" type="button" id="btnSaveVoice" data-i18n="voice.save">保存语音设置</button>
+            <button class="btn" type="button" id="btnTestVoice" data-i18n="voice.test">测试发键</button>
+            <button class="btn" type="button" id="btnQwen" data-i18n="voice.qwenBtn">打开千问「允许注入」</button>
+          </div>
+          <div class="hint" id="qwenState" hidden></div>
+          <div class="result" id="voiceResult" hidden></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title" data-i18n="voice.usage">使用说明</div>
+          <p class="note" data-i18n-html="voice.usageHtml">
+            语音走遥控器麦克风 → 虚拟声卡。请在输入法设置里把麦克风选择为
+            <code>CABLE Output (VB-Audio Virtual Cable)</code>，
+            否则输入法收不到遥控器采到的声音。
+          </p>
+        </div>
+      </section>
+
+      <!-- ==================== 设置 ==================== -->
+      <section class="page" id="page-settings" hidden>
+        <div class="card">
+          <div class="card-title" data-i18n="set.remote">遥控器</div>
+          <div class="field">
+            <label for="remoteAddr" data-i18n="set.addr">蓝牙地址</label>
+            <div class="row">
+              <input type="text" id="remoteAddr" class="inline-input" placeholder="AA:BB:CC:DD:EE:FF" spellcheck="false">
+              <button class="btn" type="button" id="btnScan" data-i18n="set.scan">扫描遥控器</button>
+            </div>
+            <div class="hint" data-i18n-html="set.addrHintHtml">填入遥控器蓝牙地址（形如 <code>AA:BB:CC:DD:EE:FF</code>），或先扫描再点一项填入。</div>
+          </div>
+          <div class="scan-list" id="scanList" hidden></div>
+          <div class="result" id="scanMsg" hidden></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title" data-i18n="set.audio">音频</div>
+          <div class="field">
+            <label for="gain"><span data-i18n="set.gain">增益</span> <span id="gainVal" style="color:var(--accent-11)">4.0×</span></label>
+            <input type="range" id="gain" min="0.5" max="10" step="0.1" value="4">
+          </div>
+          <div class="field">
+            <div class="row" style="gap:22px">
+              <label class="switch"><input type="checkbox" id="agc"><span data-i18n="set.agc">AGC 自动增益</span></label>
+              <label class="switch"><input type="checkbox" id="relay"><span data-i18n="set.relay">内置麦克风直通</span></label>
+            </div>
+          </div>
+          <div class="row" style="margin-top:16px">
+            <button class="btn primary" type="button" id="btnSaveSettings" data-i18n="set.save">保存设置</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title" data-i18n="set.appearance">外观</div>
+          <label class="switch"><input type="checkbox" id="themeLight"><span data-i18n="set.light">浅色主题（默认开）</span></label>
+          <div class="hint" id="themeNow">当前：—</div>
+          <div class="hint" data-i18n-html="set.themeHintHtml">
+            默认浅色（浅底 + 纯白卡片 + DeepSeek 蓝）。选择记在本机，刷新后保持；
+            地址栏也可以：<code>?theme=dark</code> 切深色。
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title" data-i18n="set.iface">界面</div>
+          <div class="rows">
+            <div class="srow"><span class="k" data-i18n="set.port">服务端口</span><span class="v" id="portVal">—</span></div>
+            <div class="srow"><span class="k" data-i18n="set.version">程序版本</span><span class="v" id="verVal">—</span></div>
+            <div class="srow"><span class="k" data-i18n="set.home">程序目录</span><span class="v" id="homeVal">—</span></div>
+            <div class="srow"><span class="k">Python</span><span class="v" id="pyVal">—</span></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title" data-i18n="set.autostart">开机自启</div>
+          <label class="switch"><input type="checkbox" id="autostart"><span data-i18n="set.autostartLabel">开机后台启动</span></label>
+          <div class="hint" data-i18n="set.autostartHint">写入当前用户启动项，不需要管理员权限，开机后台静默启动、不会弹任何窗口。</div>
+        </div>
+
+        <!-- 虚拟声卡：语音的物理前提。跟「诊断」放一起（都是"环境准备"这一类的）。 -->
+        <div class="card" id="cableCard">
+          <div class="card-title" data-i18n="cable.title">虚拟声卡（语音必备）</div>
+          <div class="rows" id="cableRows">
+            <div class="srow"><span class="k" data-i18n="cable.row">虚拟声卡</span><span class="v" data-i18n="row.loading">正在读取…</span></div>
+          </div>
+          <div class="hint" id="cableHint"></div>
+          <div class="row" style="margin-top:14px">
+            <button class="btn primary" type="button" id="btnInstallCable" data-i18n="cable.btn">安装虚拟声卡（VB-CABLE）</button>
+          </div>
+          <div class="result" id="cableBox" hidden></div>
+          <div class="hint" id="cableHow"></div>
+          <div class="hint" id="cableUac"></div>
+          <div class="hint" id="cableManual"></div>
+          <div class="hint" id="cableNext"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title" data-i18n="set.diag">诊断</div>
+          <div class="row">
+            <button class="btn" type="button" id="btnCheck" data-i18n="set.check">环境体检</button>
+            <button class="btn" type="button" id="btnInstall" data-i18n="set.installBase">安装基础依赖</button>
+            <button class="btn" type="button" id="btnInstallKeys" data-i18n="set.installKeys">安装按键映射依赖（frida，约 130MB）</button>
+            <button class="btn" type="button" id="btnElevate" data-i18n="set.elevate">以管理员身份重启</button>
+            <button class="btn primary" type="button" id="btnSetupElevated" data-i18n="set.optimize">一键优化（弹一次管理员）</button>
+            <button class="btn" type="button" id="btnRestartApp" data-i18n="set.restartApp">重启整个客户端</button>
+            <button class="btn" type="button" id="btnResetBt" data-i18n="set.resetBt">重置蓝牙电台</button>
+            <button class="btn" type="button" id="btnKeysCheck" data-i18n="set.keysCheck">按键映射自检</button>
+            <button class="btn" type="button" id="btnMicCheck" data-i18n="set.micCheck">麦克风自检</button>
+          </div>
+          <div class="hint" data-i18n-html="set.micCheckHint">「<b>麦克风自检</b>」读一秒<b>系统默认输入设备</b>并报峰值：读数是 0 就说明「系统这边就没有声音进来」（多半是默认录音设备被设成了 <code>CABLE Output</code>、设备被静音、隐私设置没开、或音频驱动卡死）—— 跟本程序无关。</div>
+          <div class="hint" data-i18n-html="set.keysCheckHint">「<b>按键映射自检</b>」用法：先连按几下遥控器方向键，再点它 —— 日志里会写明钩子读到几次、报文多长、收到几条，用来分清「挂错了宿主」还是「这支遥控器报文格式不同」。<b>公司电脑上按键映射用不了，通常是杀软/EDR 拦了注入：请 IT 把程序目录加进白名单</b>（语音不受影响）。</div>
+          <div class="hint" data-i18n-html="set.keysRiskHtml">⚠ 「安装按键映射依赖」会装入 frida，并往系统的蓝牙 HID 驱动宿主里<b>注入</b>一个模块：需要一次管理员权限，可能被杀软误报/隔离，少数带内核反作弊的游戏可能起不来。<b>只要语音就不要装这一项。</b></div>
+          <div class="hint" data-i18n="set.resetBtHint">遥控器「按键有用、但语音连不上」时用一次：BLE 只接受一个连接，系统有时会把它攥住不放，这一下等于帮你把蓝牙开关关开一次（要一次管理员）。</div>
+          <div class="result" id="checkBox" hidden></div>
+          <div class="result" id="installBox2" hidden></div>
+        </div>
+
+        <div class="card danger-zone">
+          <div class="card-title" data-i18n="cleanup.title">清理 / 卸载（逐项勾选）</div>
+          <div class="hint" style="margin-top:0" data-i18n-html="cleanup.hint1Html">
+            <strong>默认什么都不勾，勾哪项删哪项</strong>，没勾的一律不动（每一项后面标了"现在在不在／多大"）。
+            带 🔒 的项需要管理员，会弹一次 UAC。执行顺序固定（先断自启 → 再杀进程 → 再删文件），
+            因为不先杀进程就删不掉 .venv（正在运行的 pythonw.exe 被系统锁着；
+            极端情况下程序会安排到退出后自动删完）。
+          </div>
+          <div class="hint" data-i18n-html="cleanup.hint2Html">
+            <strong>想彻底卸载整个程序？两步（顺序别反）：</strong>
+            ① 这里点「选『推荐清理』」→ 开始清理（清掉开机自启和 frida 残留服务）；
+            ② 然后<strong>直接删掉整个程序目录</strong>。
+            程序是纯绿色部署，没有安装器，系统里不会留别的东西 ——
+            所以内置的 Python 运行时（runtime\）不在清理清单里，它属于程序本体。
+          </div>
+          <div class="del-list" id="delItems"><div class="hint" data-i18n="cleanup.loading">正在读取可清理项…</div></div>
+          <div class="row" style="margin-top:10px">
+            <button class="btn" type="button" id="btnDelNone" data-i18n="cleanup.none">全不选</button>
+            <button class="btn" type="button" id="btnDelRecommend" data-i18n="cleanup.rec">选「推荐清理」</button>
+            <button class="btn" type="button" id="btnDelAll" data-i18n="cleanup.all">全选</button>
+          </div>
+          <div class="row" style="margin-top:12px">
+            <button class="btn danger" type="button" id="btnUninstall" disabled data-i18n="cleanup.start0">开始清理（未勾选）</button>
+          </div>
+          <div class="result" id="uninstallBox" hidden></div>
+        </div>
+      </section>
+
+      <!-- ==================== 日志 ==================== -->
+      <section class="page" id="page-log" hidden>
+        <div class="log-toolbar">
+          <label class="switch"><input type="checkbox" id="pauseScroll"><span data-i18n="log.pause">暂停滚动</span></label>
+          <button class="btn ml-auto" type="button" id="btnClearLog" data-i18n="log.clear">清屏</button>
+        </div>
+        <div class="log-box" id="logBox">
+          <div class="log-line log-empty" data-i18n="log.empty">等待日志…</div>
+        </div>
+      </section>
+    </div>
+  </main>
+</div>
+
+<div class="toast-wrap" id="toastWrap"></div>
+<input type="file" id="importFile" accept="application/json,.json" hidden>
+
+<script>
+(function () {
+  'use strict';
+
+  /* ==================== 小工具 ==================== */
+  var $ = function (s, r) { return (r || document).querySelector(s); };
+  var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); };
+  var el = function (tag, cls, text) {
+    var n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text != null) n.textContent = text;
+    return n;
+  };
+
+  /* ==================== 多语言（中文 / English） ====================
+     改文案前先读这几条：
+       · 界面上每一句可见文字都走 t('key')；**中文是基准**，英文缺键时回落中文（宁可混一句，也不要空白或 key 名）
+       · 静态节点标 data-i18n / data-i18n-html / data-i18n-placeholder / data-i18n-title，
+         applyLang() 负责回填；HTML 结构要保留的地方才用 data-i18n-html（越少越好）
+       · 语言属于"外观偏好"：localStorage 只存它和主题；**后端配置永远以后端为准**，绝不从这里推给后端
+       · 切换语言同时 POST /api/action {action:"set-lang"}，让后端换它自己发的中文/英文消息
+       · 默认中文：检测不出来（navigator.language 不是字符串 / 为空 / 既非 zh 也非 en）就用中文
+       · en 里唯一允许出现的中文是磁盘上的真实文件名 启动遥控器.vbs（改了英文用户就找不到那个文件）
+     ================================================================ */
+  var LANG_KEY = 'vibe-mote-lang';
+  var LANG = 'zh';
+  var I18N = {
+    zh: {
+      'appTitle': '遥控器控制台',
+      'brand.title': '遥控器控制台',
+      'brand.sub': 'Google TV 遥控器 → 键鼠',
+      'nav.status': '状态',
+      'nav.keys': '按键映射',
+      'nav.voice': '语音',
+      'nav.settings': '设置',
+      'nav.log': '日志',
+      'page.status': '状态',
+      'page.keys': '按键映射',
+      'page.voice': '语音',
+      'page.settings': '设置',
+      'page.log': '日志',
+      'lang.title': '界面语言',
+      'listSep': '、',
+      'conn.connecting': '连接中…',
+      'conn.connected': '已连接',
+      'conn.idle': '未运行',
+      'conn.down': '连接中断',
+      'sig.wait': '等待遥控器信号',
+      'sig.down': '收到 · {0}',
+      'sig.up': '松开 · {0}',
+      'sig.unmapped': ' · 未映射',
+      'hero.checking': '检测中',
+      'hero.reading': '正在读取客户端状态…',
+      'hero.noConn': '无法连接',
+      'hero.noConnText': '读不到客户端状态',
+      'hero.noConnMeta': '客户端没在运行（或页面是旧的）。双击「启动遥控器.vbs」重新打开即可。',
+      'hero.runningText': '客户端正在运行',
+      'hero.stoppedText': '客户端已停止',
+      'hero.remote': '遥控器 {0}',
+      'hero.noRemote': '尚未配置遥控器地址',
+      'card.state': '运行状态',
+      'card.deps': '依赖与版本',
+      'row.loading': '正在读取…',
+      'row.deps': '依赖',
+      'row.clientDown': '未运行 / 无法访问',
+      'row.next': '下一步',
+      'row.nextStep': '双击 启动遥控器.vbs → 若提示缺依赖，点「安装基础依赖」',
+      'st.running': '运行中',
+      'st.stopped': '未运行',
+      'st.ready': '就绪',
+      'st.notReady': '未就绪',
+      'st.blocked': '已拦截 {0} 个键',
+      'st.client': '客户端',
+      'st.remoteAddr': '遥控器地址',
+      'st.notSet': '未设置',
+      'st.connected': '已连接',
+      'st.disconnected': '未连接',
+      'st.voice': '语音通道',
+      'st.keys': '按键通道',
+      'st.bt': '蓝牙连接',
+      'st.autostart': '开机自启',
+      'st.on': '已开启',
+      'st.off': '未开启',
+      'st.frida': 'Frida 残留',
+      'st.fridaVal': '{0} 条残留服务 / {1} 个 helper',
+      'st.fridaTip': '普通权限下 Frida 每次挂载都要注册服务（需要管理员）→ 每挂一次弹一次 UAC。点「设置 → 一键优化」弹最后一次 UAC，之后自启以最高权限运行，再也不会弹。',
+      'st.runtime': '（{0}）',
+      'st.homeTip': '程序实际运行目录。若这里不是你改代码的那个目录，说明你在跑另一份副本。',
+      'dep.bannerTitle': '依赖不完整',
+      'dep.bannerBtn': '安装依赖',
+      'dep.bannerBtn2': '全部安装',
+      'dep.unknown': '未知',
+      'dep.ok': '齐全',
+      'dep.missing': '缺失 {0} 项',
+      'dep.check': '依赖检查',
+      'dep.action': '需要操作',
+      'dep.needRestart': '依赖已装进 .venv，重启客户端后生效',
+      'dep.restartTitle': '还差一步：重启客户端',
+      'dep.restartText': '依赖已经装好了（在包内 .venv 里），但当前客户端用的还是原来的 Python —— 重启一次就生效。',
+      'dep.restartBtn': '重启整个客户端',
+      'dep.missingLabel': '缺少',
+      'dep.missingTitle': '缺少依赖',
+      'dep.missingText': '缺：{0}。推荐点「全部安装」一次装好（语音 + 按键映射 + 虚拟声卡，约 140MB）；只想先用语音键，就点右边那个（约 10MB）。',
+      'dep.allBtn': '全部安装（语音 + 按键映射 + 虚拟声卡，约 140MB）',
+      'dep.voiceOnlyBtn': '只装语音依赖（约 10MB）',
+      'dep.keysLabel': '按键映射',
+      'dep.keysRow': '还需要 frida（可选，约 130MB）',
+      'dep.keysTitle': '按键映射还没装',
+      'dep.keysText': '语音键已经能用了。方向键 / OK / 音量这些要额外装 frida（约 130MB）才能映射 —— 不装也不影响语音。',
+      'dep.keysBtn': '安装按键映射依赖（~130MB）',
+      'dep.cableTitle': '还差虚拟声卡',
+      'dep.cableText': '语音的物理前提是 VB-CABLE 虚拟声卡：遥控器的麦克风得有地方出声，输入法才读得到。装它要一次管理员权限，装完必须重启一次。',
+      'dep.cableBtn': '一键安装虚拟声卡',
+      'dep.cableGhostTitle': '虚拟声卡现在用不了',
+      'dep.cableGhostText': '注册表里还有 VB-CABLE，但现在已经枚举不到可用的音频设备 —— 语音这会儿出不了字。**先重启一次**（VB-CABLE 卸载后要重启才算卸完）；重启后还不行，就点右边重装一次。',
+      'dep.cableGhostBtn': '重装虚拟声卡',
+      'dep.cableGhostBtn2': '清除虚拟声卡残留',
+      'act.cleanCableResidue': '清除虚拟声卡残留',
+      'cable.residueStarted': '正在清除残留（只删 VB-CABLE 自己的那几处，会弹一次 UAC）…',
+      'cable.residueHint': '清完**重启一次**，再点「重装虚拟声卡」',
+      // ── 「首次准备」清单（首页）：把"用起来之前要过的几关"一次摆出来 ──
+      'setup.title': '首次准备',
+      'setup.must': '必需',
+      'setup.opt': '可选',
+      'setup.hint': '从上到下点一遍就能用。前两项是必需的：不装虚拟声卡，按语音键没反应（麦克风没地方出声）；不装依赖，方向键也没反应。',
+      'setup.allDone': '✓ 五项都就绪了，直接用就行。',
+      'setup.depsOk': '齐全',
+      'setup.depsBad': '缺 {0} 项（语音 {1} · 按键 {2}）',
+      'setup.depsBtn': '全部安装',
+      'setup.cableOk': '已装',
+      'setup.cableBad': '没装 —— 语音的物理前提，没它遥控器麦克风没地方出声',
+      'cable.ghost': '注册表里装了，但现在枚举不到可用的输出端点 —— 先重启一次；还不行就点右边重装',
+      'setup.cableGhost': '注册表里装了，但枚举不到可用的设备 —— 先重启一次；还不行就点右边重装',
+      'setup.cableBtn': '一键安装',
+      'setup.qwenOk': '已打开 ✓',
+      'setup.qwenBad': '没开 —— 千问会丢掉程序发的按键',
+      'setup.qwenOptout': '你关掉了（点右边按钮可以再打开）',
+      'setup.qwenBtn': '打开',
+      'setup.qwenReopen': '重新打开',
+      'setup.qwenNoIme': '本机没装千问输入法（用别的输入法就跳过这项）',
+      'setup.bootOk': '已开启 ✓',
+      'setup.bootBad': '没开 —— 每次开机要手动启动',
+      'setup.bootOn': '打开',
+      'setup.bootOff': '关闭',
+      'setup.uacOk': '已完成 ✓（Frida 不再弹 UAC）',
+      'setup.uacBad': '没做 —— 按键映射第一次挂载会弹一次 UAC；做了以后不再弹',
+      'setup.uacBtn': '一键优化',
+      'setup.deps': '运行依赖',
+      'setup.mustVoice': '语音必需',
+      'setup.depsKeysBad': '语音依赖齐全；按键映射还差 frida（可选，约 130MB）',
+      'setup.qwen': '千问「允许注入」',
+      'setup.boot': '开机自启',
+      'setup.uac': '一键优化（免 UAC）',
+      'qwen.noIme': '本机没有检测到千问输入法 —— 这个开关不需要，用别的输入法看「使用说明」。',
+      'qwen.on': '千问「允许注入」已打开 ✓（首次启动时自动打开的）。若语音键在千问里没反应，可点右边按钮重新打开一次。',
+      'qwen.optout': '千问「允许注入」是关的 —— 你之前在「清理」里明确删过它，所以程序不再自动打开。想恢复就点右边按钮。',
+      'qwen.off': '千问「允许注入」还没打开（千问默认会丢弃程序发的按键）。下次重启客户端会自动打开，也可以现在点右边按钮。',
+      'qwen.reopen': '重新打开千问「允许注入」',
+      'qwen.open': '打开千问「允许注入」',
+      'keys.profileTitle': '预设方案：选应用 + 选输入法，一键配好整套',
+      'keys.app': '目标应用',
+      'keys.ime': '输入法（决定语音键）',
+      'keys.applyProfile': '应用这套预设',
+      'keys.recommended': '恢复推荐配置',
+      'keys.clearAll': '清空映射',
+      'keys.riskHtml': '⚠ <strong>按键映射靠"注入"实现</strong>：程序会往系统的蓝牙 HID 驱动宿主里注入一个模块（要 <strong>一次</strong>管理员权限，点过「一键优化」后不再弹）。它可能被 <b>杀软误报/隔离</b>；少数带内核反作弊的 <b>游戏</b> 可能起不来；<b>公司/学校电脑</b> 建议先问 IT。<strong>语音功能完全不需要这一项</strong>。详见 README「已知的限制与风险」。',
+      'keys.export': '导出',
+      'keys.import': '导入',
+      'keys.locate': '按下遥控器键来定位',
+      'keys.locateTip': '打开后，收到遥控器按键事件会自动选中并滚动到那个按键',
+      'keys.padTip': '点任意按键编辑映射 · 遥控器按下时按钮会实时高亮',
+      'keys.profileNote': '{0}：{1}　|　{2}：{3}',
+      'map.edit': '编辑映射',
+      'map.editOf': '编辑：{0}',
+      'map.empty': '从左侧选一个遥控器按键开始编辑。',
+      'map.type': '映射类型',
+      'map.optKey': 'key · 单键',
+      'map.optCombo': 'combo · 组合键',
+      'map.optHold': 'hold · 按住不放',
+      'map.optHoldCombo': 'holdcombo · 按住组合键',
+      'map.optMouse': 'mouse · 鼠标',
+      'map.optHoldMouse': 'holdmouse · 按住鼠标',
+      'map.optText': 'text · 文本',
+      'map.target': '目标键',
+      'map.capturePh': '点右侧按钮捕获',
+      'map.capture': '按键捕获',
+      'map.captureArmed': '捕获中…（点此取消）',
+      'map.captureHint': '现在按一下物理键盘上的键 —— 也可以滚一下滚轮、或点一下鼠标键',
+      'map.captureHintCombo': '现在按一下物理键盘上的键（修饰键请用上面的多选框勾选）',
+      'map.captureHintMods': '修饰键请用上面的多选框勾选，现在按主键',
+      'map.mods': '修饰键',
+      'map.mouse': '鼠标动作',
+      'map.text': '文本内容',
+      'map.textPh': '按下遥控器键时输入的文本',
+      'map.save': '保存这个映射',
+      'map.clear': '清除这个映射',
+      'map.unmapped': '未映射',
+      'map.hold': '按住 {0}',
+      'map.holdWheel': '按住 {0}·连续滚',
+      'map.textEmpty': '文本（空）',
+      'map.textPrefix': '文本：{0}',
+      'map.hintVoice': '语音键也可以单独在「语音」页配置；这里保存会写入按键映射表（keys.voice）。',
+      'map.hintSave': '保存会把完整配置（含其它按键）一起 POST 到 /api/config。',
+      'mouse.wheelUp': '滚轮上',
+      'mouse.wheelDown': '滚轮下',
+      'mouse.left': '鼠标左键',
+      'mouse.right': '鼠标右键',
+      'mouse.middle': '鼠标中键',
+      'mouse.optLeft': '左键',
+      'mouse.optRight': '右键',
+      'mouse.optMiddle': '中键',
+      'kname.up': '上',
+      'kname.left': '左',
+      'kname.ok': 'OK',
+      'kname.right': '右',
+      'kname.down': '下',
+      'kname.back': '返回',
+      'kname.voice': '语音',
+      'kname.home': '主页',
+      'kname.mute': '静音',
+      'kname.youtube': 'YouTube',
+      'kname.netflix': 'NETFLIX',
+      'kname.power': '电源',
+      'kname.input': '输入源',
+      'kname.side': '侧边',
+      'kname.volupSub': '音量+',
+      'kname.voldownSub': '音量−',
+      'voice.title': '语音键目标',
+      'voice.mode': '模式',
+      'voice.hold': '按住',
+      'voice.tap': '按一下',
+      'voice.mods': '修饰键',
+      'voice.mainKey': '主键',
+      'voice.preset': '输入法预设',
+      'voice.pick': '请选择…',
+      'voice.qwen': '千问输入法',
+      'voice.sogou': '搜狗语音输入',
+      'voice.wechat': '微信输入法',
+      'voice.win': 'Windows 语音输入',
+      'voice.doubao': '豆包输入法',
+      'voice.custom': '自定义',
+      'voice.save': '保存语音设置',
+      'voice.test': '测试发键',
+      'voice.qwenBtn': '打开千问「允许注入」',
+      'voice.usage': '使用说明',
+      'voice.usageHtml': '语音走遥控器麦克风 → 虚拟声卡。请在输入法设置里把麦克风选择为 <code>CABLE Output (VB-Audio Virtual Cable)</code>， 否则输入法收不到遥控器采到的声音。',
+      'voice.keep': '保持现设置',
+      'voice.holdPrefix': '按住 {0}',
+      'voice.tapPrefix': '按一下 {0}',
+      'voice.tip.doubao': '豆包会拦截程序注入的按键，可能无效',
+      'set.remote': '遥控器',
+      'set.addr': '蓝牙地址',
+      'set.scan': '扫描遥控器',
+      'set.addrHintHtml': '填入遥控器蓝牙地址（形如 <code>AA:BB:CC:DD:EE:FF</code>），或先扫描再点一项填入。',
+      'set.audio': '音频',
+      'set.gain': '增益',
+      'set.agc': 'AGC 自动增益',
+      'set.relay': '内置麦克风直通',
+      'set.save': '保存设置',
+      'set.appearance': '外观',
+      'set.light': '浅色主题（默认开）',
+      'set.themeNowLight': '当前：浅色主题（浅底 + 纯白卡片 + DeepSeek 蓝 #4D6BFE）',
+      'set.themeNowDark': '当前：深色主题（同一支蓝的深色档）',
+      'set.themeHintHtml': '默认浅色（浅底 + 纯白卡片 + DeepSeek 蓝）。选择记在本机，刷新后保持； 地址栏也可以：<code>?theme=dark</code> 切深色。',
+      'set.iface': '界面',
+      'set.port': '服务端口',
+      'set.version': '程序版本',
+      'set.home': '程序目录',
+      'set.autostart': '开机自启',
+      'set.autostartLabel': '开机后台启动',
+      'set.autostartHint': '写入当前用户启动项，不需要管理员权限，开机后台静默启动、不会弹任何窗口。',
+      'set.diag': '诊断',
+      'cable.title': '虚拟声卡（语音必备）',
+      'cable.row': '虚拟声卡',
+      'cable.installed': '已安装',
+      'cable.missing': '未安装',
+      'cable.unknown': '未知',
+      'cable.inUse': '已经在用，不需要再装。',
+      'cable.noSound': '未安装虚拟声卡：遥控器麦克风没有地方出声，按语音键不会有反应。',
+      'cable.unknownHint': '还没读到虚拟声卡状态（客户端可能比较旧）。下面是安装入口。',
+      'cable.bundled': '包内已带安装器（vbcable\\VBCABLE_Setup_x64.exe），点按钮即可。',
+      'cable.download': '包内没有安装器，点按钮会先从官网下载（约 1.3MB）再运行。',
+      'cable.howUnknown': '点按钮会处理：包内有安装器就直接运行，没有就从官网下载（约 1.3MB）。',
+      'cable.uac': '安装时会弹一次管理员授权（UAC）—— VB-CABLE 是内核音频驱动，这是它自己的安装器要求的，与本程序无关。',
+      'cable.btn': '安装虚拟声卡（VB-CABLE）',
+      'cable.manualPrefix': '也可以自己装：',
+      'cable.manualOr': ' / ',
+      'cable.linkHome': 'VB-CABLE 官网',
+      'cable.linkDownload': '直接下载安装包',
+      'cable.next': '装好后建议重启一次客户端；然后在输入法设置里把麦克风选成 CABLE Output (VB-Audio Virtual Cable)，语音才会出字。',
+      'cable.nextInstalled': '语音还是没反应时：重启一次客户端，并确认输入法里的麦克风选的是 CABLE Output (VB-Audio Virtual Cable)。',
+      'cable.starting': '正在启动安装，稍等…',
+      'cable.startFail': '启动安装失败',
+      'act.installCable': '安装虚拟声卡',
+      'set.check': '环境体检',
+      'set.installBase': '安装基础依赖',
+      'set.installKeys': '安装按键映射依赖（frida，约 130MB）',
+      'set.keysRiskHtml': '⚠ 「安装按键映射依赖」会装入 frida，并往系统的蓝牙 HID 驱动宿主里<b>注入</b>一个模块：需要一次管理员权限，可能被杀软误报/隔离，少数带内核反作弊的游戏可能起不来。<b>只要语音就不要装这一项。</b>',
+      'set.keysCheck': '按键映射自检',
+      'set.micCheck': '麦克风自检',
+      'set.micCheckHint': '「<b>麦克风自检</b>」读一秒<b>系统默认输入设备</b>并报峰值：读数是 0 就说明「系统这边就没有声音进来」（多半是默认录音设备被设成了 <code>CABLE Output</code>、设备被静音、隐私设置没开、或音频驱动卡死）—— 跟本程序无关。',
+      'set.keysCheckHint': '「<b>按键映射自检</b>」用法：先连按几下遥控器方向键，再点它 —— 日志里会写明钩子读到几次、报文多长、收到几条，用来分清「挂错了宿主」还是「这支遥控器报文格式不同」。<b>公司电脑上按键映射用不了，通常是杀软/EDR 拦了注入：请 IT 把程序目录加进白名单</b>（语音不受影响）。',      'set.elevate': '以管理员身份重启',
+      'set.optimize': '一键优化（弹一次管理员）',
+      'set.restartApp': '重启整个客户端',
+      'set.resetBt': '重置蓝牙电台',
+      'set.resetBtHint': '遥控器「按键有用、但语音连不上」时用一次：BLE 设备只接受一个连接，系统有时会把它攥住不放；这一下等于帮你把蓝牙开关关开一次（要一次管理员，期间蓝牙设备会短暂断开）。',
+      'cleanup.title': '清理 / 卸载（逐项勾选）',
+      'cleanup.hint1Html': '<strong>默认什么都不勾，勾哪项删哪项</strong>，没勾的一律不动（每一项后面标了"现在在不在／多大"）。 带 🔒 的项需要管理员，会弹一次 UAC。执行顺序固定（先断自启 → 再杀进程 → 再删文件）， 因为不先杀进程就删不掉 .venv（正在运行的 pythonw.exe 被系统锁着； 极端情况下程序会安排到退出后自动删完）。',
+      'cleanup.hint2Html': '<strong>想彻底卸载整个程序？两步（顺序别反）：</strong> ① 这里点「选『推荐清理』」→ 开始清理（清掉开机自启和 frida 残留服务）； ② 然后<strong>直接删掉整个程序目录</strong>。 程序是纯绿色部署，没有安装器，系统里不会留别的东西 —— 所以内置的 Python 运行时（runtime\\）不在清理清单里，它属于程序本体。',
+      'cleanup.loading': '正在读取可清理项…',
+      'cleanup.none': '全不选',
+      'cleanup.rec': '选「推荐清理」',
+      'cleanup.all': '全选',
+      'cleanup.start0': '开始清理（未勾选）',
+      'cleanup.startN': '开始清理（已勾 {0} 项）',
+      'cleanup.gone': '（不存在）',
+      'cleanup.size': '（{0} MB）',
+      'cleanup.pendingHead': '正在清理（{0} 项）…过程见「日志」页',
+      'cleanup.pendingKills': '⚠ 最后一步会结束客户端本身，那时页面读不到状态是正常的。',
+      'cleanup.pendingKeep': '客户端不会被结束，完成后这里会显示结果。',
+      'cleanup.headDone': '✅ 清理完成',
+      'cleanup.headWarn': '⚠ 清理完成，但有 {0} 项没删掉',
+      'cleanup.defaultDone': '客户端已按你勾选的项清理完毕',
+      'cleanup.tailKeep': '　客户端还在运行，可以继续用。',
+      'cleanup.tailKilled': '　客户端已退出，所以现在读不到状态是正常的。要重新安装：双击「启动遥控器.vbs」→ 界面按提示点「安装依赖」。',
+      'cleanup.failLine': '　没删掉的：{0}（多半还有程序占着文件，关掉它再点一次「清理」）。',
+      'cleanup.logDone': '✅ 清理完成：{0}',
+      'cleanup.toastDone': '清理完成 ✅',
+      'cleanup.toastWarn': '清理完成（有 {0} 项没删掉）',
+      'log.pause': '暂停滚动',
+      'log.clear': '清屏',
+      'log.empty': '等待日志…',
+      'log.cleared': '已清屏（不影响后端日志）',
+      'act.start': '启动',
+      'act.stop': '停止',
+      'act.restart': '重启',
+      'act.fail': '{0}失败',
+      'act.installDeps': '安装依赖',
+      'act.installBase': '安装基础依赖',
+      'act.installKeys': '安装按键映射依赖',
+      'act.installKeysConfirm': '这一项会装入 frida，并往系统的蓝牙 HID 驱动宿主里注入一个模块：需要一次管理员权限（点过「一键优化」后不再弹）\n\n已知代价：可能被杀软误报或静默隔离；少数带内核反作弊的游戏可能起不来；公司/学校电脑可能直接被拦。\n\n只要语音的话不需要装它。要继续吗？',
+      'act.restartApp': '重启整个客户端',
+      'act.resetBt': '重置蓝牙电台',
+      'act.resetBtConfirm': '重置蓝牙电台会短暂断开所有蓝牙设备（耳机/键盘几秒后会自动恢复），继续？',
+      'act.applyProfile': '应用预设',
+      'act.cleanup': '清理',
+      'act.qwenInject': '打开千问允许注入',
+      'act.optimize': '一键优化',
+      'job.task': '任务',
+      'job.ended': '任务结束',
+      'job.running': ' 运行中…',
+      'job.done': ' 已完成',
+      'job.restartHint': ' —— 请点上面的「重启整个客户端」生效',
+      'job.toastRestart': '装好了：请点「重启整个客户端」让它生效',
+      'job.toastAllReady': '全部依赖已就绪',
+      'job.toastVoiceReady': '语音依赖已就绪（按键映射可选，见上方提示）',
+      'job.toastDone': '任务完成',
+      'install.starting': '正在启动安装，稍等…',
+      'install.started': '已开始{0}，进度在下面 ↓',
+      'install.startFail': '启动失败',
+      'toast.notLoaded': '尚未读取到后端配置，请刷新页面后重试',
+      'toast.notLoadedShort': '尚未读取到后端配置',
+      'toast.saved': '已保存',
+      'toast.saveFail': '保存失败：后端未响应',
+      'toast.loadConfigFail': '读取后端配置失败，暂时无法保存（请检查客户端是否在运行）',
+      'toast.opFail': '操作失败：后端未响应',
+      'toast.backendDown': '后端未响应',
+      'toast.noContent': '（后端未返回内容）',
+      'toast.restarting': '正在重启，稍后刷新',
+      'toast.exported': '已导出配置',
+      'toast.importJson': '导入失败：不是合法 JSON',
+      'toast.importObj': '导入失败：文件内容不是配置对象',
+      'toast.imported': '配置已导入',
+      'toast.scanning': '正在扫描…',
+      'toast.scanFail': '扫描失败：后端未响应',
+      'toast.scanFailShort': '扫描失败',
+      'toast.scanNone': '没有扫描到遥控器',
+      'toast.filled': '已填入 {0}',
+      'toast.checking': '正在体检…',
+      'toast.checkFail': '体检失败：后端未响应',
+      'toast.pickKey': '请先捕获目标键',
+      'toast.textEmptyWarn': '文本内容为空，将写入空文本映射',
+      'toast.noSuchMap': '这个按键本来就没有映射',
+      'toast.locateOn': '已开启：按遥控器键自动定位',
+      'toast.locateOff': '已关闭自动定位',
+      'toast.themeLight': '已切到浅色主题',
+      'toast.themeDark': '已切回深色主题',
+      'toast.nothingPicked': '还没勾选任何项目',
+      'toast.cleanupStarted': '已开始清理',
+      'toast.cleanupFail': '启动清理失败',
+      'toast.applied': '已应用',
+      'toast.applyFail': '应用失败',
+      'toast.langZh': '已切换为中文',
+      'toast.langEn': 'Switched to English',
+      'confirm.recommended': '用推荐配置覆盖当前全部按键映射？',
+      'confirm.clearAll': '清空全部按键映射？',
+      'uninstall.confirmHead': '将删除以下 {0} 项：',
+      'uninstall.confirmKeep': '没勾的都不会动。',
+      'uninstall.confirmAdmin': '含需要管理员的项，会弹一次 UAC。',
+      'uninstall.confirmKills': '清理到最后客户端会自己退出（页面失联是正常的），之后双击「启动遥控器.vbs」可以重新装一遍。',
+      'uninstall.confirmNoKill': '客户端不会被结束，清理完可以继续用。'
+    },
+    en: {
+      'appTitle': 'Remote Console',
+      'brand.title': 'Remote Console',
+      'brand.sub': 'Google TV remote → keyboard & mouse',
+      'nav.status': 'Status',
+      'nav.keys': 'Key mapping',
+      'nav.voice': 'Voice',
+      'nav.settings': 'Settings',
+      'nav.log': 'Logs',
+      'page.status': 'Status',
+      'page.keys': 'Key mapping',
+      'page.voice': 'Voice',
+      'page.settings': 'Settings',
+      'page.log': 'Logs',
+      'lang.title': 'Interface language',
+      'listSep': ', ',
+      'conn.connecting': 'Connecting…',
+      'conn.connected': 'Connected',
+      'conn.idle': 'Not running',
+      'conn.down': 'Connection lost',
+      'sig.wait': 'Waiting for remote signal',
+      'sig.down': 'Pressed · {0}',
+      'sig.up': 'Released · {0}',
+      'sig.unmapped': ' · not mapped',
+      'hero.checking': 'Checking',
+      'hero.reading': 'Reading client status…',
+      'hero.noConn': 'Cannot connect',
+      'hero.noConnText': 'Cannot read client status',
+      'hero.noConnMeta': 'The client is not running (or this page is stale). Double-click the launcher (启动遥控器.vbs) to open it again.',
+      'hero.runningText': 'The client is running',
+      'hero.stoppedText': 'The client has stopped',
+      'hero.remote': 'Remote {0}',
+      'hero.noRemote': 'No remote address configured yet',
+      'card.state': 'Runtime status',
+      'card.deps': 'Dependencies & versions',
+      'row.loading': 'Reading…',
+      'row.deps': 'Dependencies',
+      'row.clientDown': 'Not running / unreachable',
+      'row.next': 'Next step',
+      'row.nextStep': 'Double-click the launcher (启动遥控器.vbs) → if it reports missing dependencies, click "Install base dependencies".',
+      'st.running': 'Running',
+      'st.stopped': 'Stopped',
+      'st.ready': 'Ready',
+      'st.notReady': 'Not ready',
+      'st.blocked': 'Blocked {0} keys',
+      'st.client': 'Client',
+      'st.remoteAddr': 'Remote address',
+      'st.notSet': 'Not set',
+      'st.connected': 'Connected',
+      'st.disconnected': 'Disconnected',
+      'st.voice': 'Voice channel',
+      'st.keys': 'Key channel',
+      'st.bt': 'Bluetooth',
+      'st.autostart': 'Launch at startup',
+      'st.on': 'On',
+      'st.off': 'Off',
+      'st.frida': 'Frida leftovers',
+      'st.fridaVal': '{0} leftover service(s) / {1} helper(s)',
+      'st.fridaTip': 'Without administrator rights Frida must register a service on every mount → one UAC prompt per mount. Click "Settings → One-click optimize" for the last UAC prompt; after that the autostart task runs elevated and never prompts again.',
+      'st.runtime': ' ({0})',
+      'st.homeTip': 'The directory the app actually runs from. If this is not the copy you edit, you are running a different copy.',
+      'dep.bannerTitle': 'Dependencies incomplete',
+      'dep.bannerBtn': 'Install dependencies',
+      'dep.bannerBtn2': 'Install all',
+      'dep.unknown': 'Unknown',
+      'dep.ok': 'All present',
+      'dep.missing': '{0} missing',
+      'dep.check': 'Dependency check',
+      'dep.action': 'Action needed',
+      'dep.needRestart': 'Dependencies are installed in .venv; restart the client to apply them',
+      'dep.restartTitle': 'One more step: restart the client',
+      'dep.restartText': 'The dependencies are installed (inside the bundled .venv), but the running client still uses the original Python — one restart applies them.',
+      'dep.restartBtn': 'Restart the client',
+      'dep.missingLabel': 'Missing',
+      'dep.missingTitle': 'Missing dependencies',
+      'dep.missingText': 'Missing: {0}. Click "Install all" to get everything at once (voice + key mapping + virtual audio cable, about 140MB); if you only want the voice key for now, use the button on the right (about 10MB).',
+      'dep.allBtn': 'Install all (voice + key mapping + virtual audio cable, ~140MB)',
+      'dep.voiceOnlyBtn': 'Voice deps only (~10MB)',
+      'dep.keysLabel': 'Key mapping',
+      'dep.keysRow': 'frida still needed (optional, ~130MB)',
+      'dep.keysTitle': 'Key mapping is not installed yet',
+      'dep.keysText': 'The voice key already works. The D-pad / OK / volume keys need frida (~130MB) before they can be mapped — skipping it does not affect voice.',
+      'dep.keysBtn': 'Install key-mapping deps (~130MB)',
+      'dep.cableTitle': 'One thing left: the virtual audio cable',
+      'dep.cableText': 'The physical prerequisite for voice is the VB-CABLE virtual audio cable: the remote microphone needs somewhere to play before your input method editor can read it. Installing it needs administrator rights once, and a reboot afterwards.',
+      'dep.cableBtn': 'Install the virtual audio cable',
+      'dep.cableGhostTitle': 'The virtual audio cable is not usable right now',
+      'dep.cableGhostText': 'VB-CABLE is still in the registry, but no usable audio device is enumerated right now — so voice cannot type anything. **Reboot once first** (a VB-CABLE uninstall is not finalised until you reboot); if it still fails after that, click the button on the right to reinstall.',
+      'dep.cableGhostBtn': 'Reinstall the virtual audio cable',
+      'dep.cableGhostBtn2': 'Clear virtual-cable leftovers',
+      'act.cleanCableResidue': 'Clear virtual audio cable leftovers',
+      'cable.residueStarted': 'Clearing leftovers (only VB-CABLE’s own entries; one UAC prompt)…',
+      'cable.residueHint': '**Reboot once** when it finishes, then click “Reinstall the virtual audio cable”',
+      // ── "First-time setup" checklist (home page) ──
+      'setup.title': 'First-time setup',
+      'setup.must': 'required',
+      'setup.opt': 'optional',
+      'setup.hint': 'Work down the list and you are ready. The first two are required: without the virtual audio cable the voice button does nothing (the microphone has nowhere to play), and without the dependencies the D-pad does nothing either.',
+      'setup.allDone': '✓ All five are ready — you can just use it.',
+      'setup.depsOk': 'all present',
+      'setup.depsBad': '{0} missing (voice {1} · keys {2})',
+      'setup.depsBtn': 'Install all',
+      'setup.cableOk': 'installed',
+      'setup.cableBad': 'not installed — the physical prerequisite for voice; without it the remote microphone has nowhere to play',
+      'cable.ghost': 'registered, but no usable output endpoint is enumerated right now — reboot once first; if it still fails, reinstall with the button',
+      'setup.cableGhost': 'registered, but no usable device is enumerated right now — reboot first; if it still fails, reinstall with the button',
+      'setup.cableBtn': 'Install',
+      'setup.qwenOk': 'ON ✓',
+      'setup.qwenBad': 'off — Qianwen will discard the keystrokes this program sends',
+      'setup.qwenOptout': 'you turned it off (the button on the right turns it back on)',
+      'setup.qwenBtn': 'Turn on',
+      'setup.qwenReopen': 'Turn on again',
+      'setup.qwenNoIme': 'Qianwen is not installed on this machine (skip this row if you use another IME)',
+      'setup.bootOk': 'enabled ✓',
+      'setup.bootBad': 'off — you have to start it by hand after every boot',
+      'setup.bootOn': 'Enable',
+      'setup.bootOff': 'Disable',
+      'setup.uacOk': 'done ✓ (Frida no longer prompts for UAC)',
+      'setup.uacBad': 'not done — the first key-mapping attach prompts for UAC once; after this it never prompts again',
+      'setup.uacBtn': 'Optimize',
+      'setup.deps': 'Runtime dependencies',
+      'setup.mustVoice': 'needed for voice',
+      'setup.depsKeysBad': 'voice deps present; key mapping still needs frida (optional, ~130MB)',
+      'setup.qwen': 'Qianwen “allow injection”',
+      'setup.boot': 'Launch at startup',
+      'setup.uac': 'One-click optimization (no more UAC)',
+      'qwen.noIme': 'Qianwen IME was not found on this PC — this switch is not needed; for other IMEs see "Usage".',
+      'qwen.on': 'Qianwen "Allow injection" is ON ✓ (enabled automatically on first launch). If the voice key does nothing in Qianwen, click the button to enable it again.',
+      'qwen.optout': 'Qianwen "Allow injection" is OFF — you removed it explicitly under Cleanup, so the app no longer enables it automatically. Click the button to restore it.',
+      'qwen.off': 'Qianwen "Allow injection" is not enabled yet (Qianwen drops injected keystrokes by default). It will be enabled automatically on the next client restart, or click the button now.',
+      'qwen.reopen': 'Re-enable Qianwen "Allow injection"',
+      'qwen.open': 'Enable Qianwen "Allow injection"',
+      'keys.profileTitle': 'Profiles: pick an app + an IME to configure everything at once',
+      'keys.app': 'Target app',
+      'keys.ime': 'IME (decides the voice key)',
+      'keys.applyProfile': 'Apply this profile',
+      'keys.recommended': 'Restore recommended',
+      'keys.clearAll': 'Clear all mappings',
+      'keys.riskHtml': '⚠ <strong>Key mapping works by injection</strong>: the program injects a module into the system\'s Bluetooth HID driver host (needs <strong>one</strong> administrator approval; after "One-click optimization" it never prompts again). It may be <b>flagged or silently quarantined by antivirus</b>; a few games with kernel anti-cheat may refuse to start; on a <b>work/school PC</b> ask IT first. <strong>Voice needs none of this.</strong> See "Known limits and risks" in the README.',
+      'keys.export': 'Export',
+      'keys.import': 'Import',
+      'keys.locate': 'Locate by pressing a remote key',
+      'keys.locateTip': 'When on, incoming remote key events select and scroll to that key automatically',
+      'keys.padTip': 'Click any key to edit its mapping · buttons light up live when you press the remote',
+      'keys.profileNote': '{0}: {1} | {2}: {3}',
+      'map.edit': 'Edit mapping',
+      'map.editOf': 'Editing: {0}',
+      'map.empty': 'Pick a remote key on the left to start editing.',
+      'map.type': 'Mapping type',
+      'map.optKey': 'key · single key',
+      'map.optCombo': 'combo · key combination',
+      'map.optHold': 'hold · hold down',
+      'map.optHoldCombo': 'holdcombo · hold a combination',
+      'map.optMouse': 'mouse · mouse',
+      'map.optHoldMouse': 'holdmouse · hold mouse',
+      'map.optText': 'text · text',
+      'map.target': 'Target key',
+      'map.capturePh': 'Click the button on the right to capture',
+      'map.capture': 'Capture key',
+      'map.captureArmed': 'Capturing… (click to cancel)',
+      'map.captureHint': 'Now press a key on your physical keyboard — or scroll the wheel / click a mouse button',
+      'map.captureHintCombo': 'Now press a key on your physical keyboard (tick modifiers with the checkboxes above)',
+      'map.captureHintMods': 'Tick modifiers with the checkboxes above, then press the main key',
+      'map.mods': 'Modifiers',
+      'map.mouse': 'Mouse action',
+      'map.text': 'Text content',
+      'map.textPh': 'Text to type when the remote key is pressed',
+      'map.save': 'Save this mapping',
+      'map.clear': 'Clear this mapping',
+      'map.unmapped': 'Not mapped',
+      'map.hold': 'Hold {0}',
+      'map.holdWheel': 'Hold {0} · repeats',
+      'map.textEmpty': 'Text (empty)',
+      'map.textPrefix': 'Text: {0}',
+      'map.hintVoice': 'The voice key can also be configured on the Voice page; saving here writes it into the key map (keys.voice).',
+      'map.hintSave': 'Saving POSTs the complete config (including the other keys) to /api/config.',
+      'mouse.wheelUp': 'Wheel up',
+      'mouse.wheelDown': 'Wheel down',
+      'mouse.left': 'Left click',
+      'mouse.right': 'Right click',
+      'mouse.middle': 'Middle click',
+      'mouse.optLeft': 'Left button',
+      'mouse.optRight': 'Right button',
+      'mouse.optMiddle': 'Middle button',
+      'kname.up': 'Up',
+      'kname.left': 'Left',
+      'kname.ok': 'OK',
+      'kname.right': 'Right',
+      'kname.down': 'Down',
+      'kname.back': 'Back',
+      'kname.voice': 'Voice',
+      'kname.home': 'Home',
+      'kname.mute': 'Mute',
+      'kname.youtube': 'YouTube',
+      'kname.netflix': 'NETFLIX',
+      'kname.power': 'Power',
+      'kname.input': 'Input',
+      'kname.side': 'Side',
+      'kname.volupSub': 'Volume +',
+      'kname.voldownSub': 'Volume −',
+      'voice.title': 'Voice key target',
+      'voice.mode': 'Mode',
+      'voice.hold': 'Hold',
+      'voice.tap': 'Tap',
+      'voice.mods': 'Modifiers',
+      'voice.mainKey': 'Main key',
+      'voice.preset': 'IME preset',
+      'voice.pick': 'Choose…',
+      'voice.qwen': 'Qianwen IME',
+      'voice.sogou': 'Sogou voice input',
+      'voice.wechat': 'WeChat IME',
+      'voice.win': 'Windows voice input',
+      'voice.doubao': 'Doubao IME',
+      'voice.custom': 'Custom',
+      'voice.save': 'Save voice settings',
+      'voice.test': 'Send test key',
+      'voice.qwenBtn': 'Enable Qianwen "Allow injection"',
+      'voice.usage': 'Usage',
+      'voice.usageHtml': 'Voice goes from the remote microphone to the virtual audio cable. In your IME settings, set the microphone to <code>CABLE Output (VB-Audio Virtual Cable)</code>, otherwise the IME never receives the audio captured by the remote.',
+      'voice.keep': 'Keep current setting',
+      'voice.holdPrefix': 'Hold {0}',
+      'voice.tapPrefix': 'Tap {0}',
+      'voice.tip.doubao': 'Doubao blocks injected keystrokes, so this may not work',
+      'set.remote': 'Remote',
+      'set.addr': 'Bluetooth address',
+      'set.scan': 'Scan for remotes',
+      'set.addrHintHtml': 'Enter the remote Bluetooth address (for example <code>AA:BB:CC:DD:EE:FF</code>), or scan first and click an entry to fill it in.',
+      'set.audio': 'Audio',
+      'set.gain': 'Gain',
+      'set.agc': 'AGC automatic gain',
+      'set.relay': 'Built-in mic passthrough',
+      'set.save': 'Save settings',
+      'set.appearance': 'Appearance',
+      'set.light': 'Light theme (default)',
+      'set.themeNowLight': 'Current: light theme (pale background + pure white cards + DeepSeek blue #4D6BFE)',
+      'set.themeNowDark': 'Current: dark theme (the dark shades of the same blue)',
+      'set.themeHintHtml': 'Light by default (pale background + pure white cards + DeepSeek blue). The choice is stored on this machine and kept after a refresh; you can also use the address bar: <code>?theme=dark</code> for dark.',
+      'set.iface': 'Interface',
+      'set.port': 'Service port',
+      'set.version': 'App version',
+      'set.home': 'App directory',
+      'set.autostart': 'Launch at startup',
+      'set.autostartLabel': 'Start in the background at logon',
+      'set.autostartHint': 'Adds an entry for the current user; no administrator rights needed, and it starts silently in the background without showing any window.',
+      'set.diag': 'Diagnostics',
+      'cable.title': 'Virtual audio cable (required for voice)',
+      'cable.row': 'Virtual audio cable',
+      'cable.installed': 'Installed',
+      'cable.missing': 'Not installed',
+      'cable.unknown': 'Unknown',
+      'cable.inUse': 'Already in use — nothing to install.',
+      'cable.noSound': 'No virtual audio cable: the remote microphone has no audio device to play through, so the voice key will not respond.',
+      'cable.unknownHint': 'The virtual audio cable status could not be read yet (the client may be an older build). Install options are below.',
+      'cable.bundled': 'The installer is bundled (vbcable\\VBCABLE_Setup_x64.exe) — just click the button.',
+      'cable.download': 'No bundled installer, so the button downloads it from the official site first (about 1.3MB) and runs it.',
+      'cable.howUnknown': 'The button handles it: it runs a bundled installer if there is one, otherwise it downloads it from the official site (about 1.3MB).',
+      'cable.uac': 'Installing raises one administrator prompt (UAC) — VB-CABLE is a kernel audio driver and its own installer requires it; this is unrelated to this app.',
+      'cable.btn': 'Install virtual audio cable (VB-CABLE)',
+      'cable.manualPrefix': 'Or install it yourself: ',
+      'cable.manualOr': ' / ',
+      'cable.linkHome': 'VB-CABLE website',
+      'cable.linkDownload': 'Direct download',
+      'cable.next': 'After installing, restart the client once; then set the microphone in your IME settings to CABLE Output (VB-Audio Virtual Cable) so voice input can produce text.',
+      'cable.nextInstalled': 'If voice still does not work: restart the client once, and make sure the IME microphone is set to CABLE Output (VB-Audio Virtual Cable).',
+      'cable.starting': 'Starting the install, please wait…',
+      'cable.startFail': 'Failed to start the install',
+      'act.installCable': 'Install virtual audio cable',
+      'set.check': 'Environment check',
+      'set.installBase': 'Install base dependencies',
+      'set.installKeys': 'Install key-mapping deps (frida, ~130MB)',
+      'set.keysRiskHtml': '⚠ "Install key-mapping dependencies" pulls in frida and <b>injects</b> a module into the system\'s Bluetooth HID driver host: it needs one administrator approval, may be flagged/quarantined by antivirus, and a few games with kernel anti-cheat may refuse to start. <b>If you only want voice, do not install this.</b>',
+      'set.keysCheck': 'Key-mapping self-check',
+      'set.micCheck': 'Microphone self-check',
+      'set.micCheckHint': 'The <b>microphone self-check</b> reads the <b>system default input device</b> for one second and reports the peak: a reading of 0 means no audio is reaching Windows at all (usually the default recording device was set to <code>CABLE Output</code>, the device is muted, privacy access is off, or the audio driver is stuck) — unrelated to this program.',
+      'set.keysCheckHint': '<b>Key-mapping self-check</b>: press a few D-pad keys on the remote first, then click it — the log will say how many reads the hook saw, what lengths, and how many key reports arrived, which tells a <b>wrong host</b> apart from a <b>different remote report format</b>. <b>On a corporate PC, key mapping usually fails because antivirus/EDR blocks the injection — ask IT to whitelist the program folder</b> (voice is unaffected).',
+      'set.elevate': 'Restart as administrator',
+      'set.optimize': 'One-click optimize (one UAC prompt)',
+      'set.restartApp': 'Restart the client',
+      'set.resetBt': 'Reset Bluetooth radio',
+      'set.resetBtHint': 'Use this when the remote\'s buttons still work but voice cannot connect: a BLE device accepts only one connection and Windows sometimes holds on to it. This toggles the Bluetooth radio for you (one admin prompt; Bluetooth devices drop for a few seconds).',
+      'cleanup.title': 'Cleanup / uninstall (tick items individually)',
+      'cleanup.hint1Html': '<strong>Nothing is ticked by default — only ticked items are removed</strong>, everything else is left untouched (each item shows whether it still exists and how big it is). Items marked 🔒 need administrator rights and trigger one UAC prompt. The order is fixed (disable autostart → kill the process → delete the files), because .venv cannot be deleted while pythonw.exe is running (Windows keeps those files locked; in the worst case the app schedules the deletion for after it exits).',
+      'cleanup.hint2Html': '<strong>Want to remove the whole app? Two steps (in this order):</strong> ① click "Select recommended" here → start the cleanup (removes the autostart entry and leftover frida services); ② then <strong>delete the whole app folder</strong>. The app is a portable deployment with no installer, so nothing else is left behind on the system — which is why the bundled Python runtime (runtime\\) is not in the cleanup list: it is part of the app itself.',
+      'cleanup.loading': 'Reading removable items…',
+      'cleanup.none': 'Select none',
+      'cleanup.rec': 'Select "recommended"',
+      'cleanup.all': 'Select all',
+      'cleanup.start0': 'Start cleanup (nothing selected)',
+      'cleanup.startN': 'Start cleanup ({0} selected)',
+      'cleanup.gone': ' (missing)',
+      'cleanup.size': ' ({0} MB)',
+      'cleanup.pendingHead': 'Cleaning up ({0} items)… see the Logs page for progress',
+      'cleanup.pendingKills': '⚠ The last step quits the client itself; not being able to read its status afterwards is expected.',
+      'cleanup.pendingKeep': 'The client will not be stopped; the result appears here when the cleanup finishes.',
+      'cleanup.headDone': '✅ Cleanup complete',
+      'cleanup.headWarn': '⚠ Cleanup complete, but {0} item(s) could not be removed',
+      'cleanup.defaultDone': 'The client cleaned up the items you ticked',
+      'cleanup.tailKeep': ' The client is still running, so you can keep using it.',
+      'cleanup.tailKilled': ' The client has exited, so not being able to read its status is expected. To reinstall: double-click the launcher (启动遥控器.vbs) → then click "Install dependencies" as prompted.',
+      'cleanup.failLine': ' Not removed: {0} (something is probably still holding those files — close it and click "Cleanup" again).',
+      'cleanup.logDone': '✅ Cleanup complete: {0}',
+      'cleanup.toastDone': 'Cleanup complete ✅',
+      'cleanup.toastWarn': 'Cleanup complete ({0} item(s) could not be removed)',
+      'log.pause': 'Pause scrolling',
+      'log.clear': 'Clear',
+      'log.empty': 'Waiting for logs…',
+      'log.cleared': 'Cleared (backend logs are unaffected)',
+      'act.start': 'Start',
+      'act.stop': 'Stop',
+      'act.restart': 'Restart',
+      'act.fail': '{0} failed',
+      'act.installDeps': 'Install dependencies',
+      'act.installBase': 'Install base dependencies',
+      'act.installKeys': 'Install key-mapping dependencies',
+      'act.installKeysConfirm': 'This pulls in frida and injects a module into the system\'s Bluetooth HID driver host: one administrator approval is needed (never prompts again after "One-click optimization").\n\nKnown costs: antivirus may flag or silently quarantine it; a few games with kernel anti-cheat may refuse to start; work/school PCs may block it outright.\n\nIf you only want voice, you do not need this. Continue?',
+      'act.restartApp': 'Restart the client',
+      'act.resetBt': 'Reset Bluetooth radio',
+      'act.resetBtConfirm': 'This briefly disconnects every Bluetooth device (headsets/keyboards come back in a few seconds). Continue?',
+      'act.applyProfile': 'Apply profile',
+      'act.cleanup': 'Cleanup',
+      'act.qwenInject': 'Enable Qianwen injection',
+      'act.optimize': 'One-click optimize',
+      'job.task': 'Task',
+      'job.ended': 'task finished',
+      'job.running': ' — running…',
+      'job.done': ' — done',
+      'job.restartHint': ' — click "Restart the client" above to apply',
+      'job.toastRestart': 'Installed — click "Restart the client" to apply it',
+      'job.toastAllReady': 'All dependencies are ready',
+      'job.toastVoiceReady': 'Voice dependencies are ready (key mapping is optional, see the note above)',
+      'job.toastDone': 'Task finished',
+      'install.starting': 'Starting the install, please wait…',
+      'install.started': 'Started: {0} — progress below ↓',
+      'install.startFail': 'Failed to start',
+      'toast.notLoaded': 'Backend config is not loaded yet — please refresh and try again',
+      'toast.notLoadedShort': 'Backend config is not loaded yet',
+      'toast.saved': 'Saved',
+      'toast.saveFail': 'Save failed: no response from the backend',
+      'toast.loadConfigFail': 'Could not read the backend config, so saving is disabled for now (check whether the client is running)',
+      'toast.opFail': 'Action failed: no response from the backend',
+      'toast.backendDown': 'No response from the backend',
+      'toast.noContent': '(the backend returned no content)',
+      'toast.restarting': 'Restarting — refresh in a moment',
+      'toast.exported': 'Config exported',
+      'toast.importJson': 'Import failed: not valid JSON',
+      'toast.importObj': 'Import failed: the file is not a config object',
+      'toast.imported': 'Config imported',
+      'toast.scanning': 'Scanning…',
+      'toast.scanFail': 'Scan failed: no response from the backend',
+      'toast.scanFailShort': 'Scan failed',
+      'toast.scanNone': 'No remote found',
+      'toast.filled': 'Filled in {0}',
+      'toast.checking': 'Checking the environment…',
+      'toast.checkFail': 'Check failed: no response from the backend',
+      'toast.pickKey': 'Capture a target key first',
+      'toast.textEmptyWarn': 'The text is empty, so an empty text mapping will be saved',
+      'toast.noSuchMap': 'This key has no mapping anyway',
+      'toast.locateOn': 'On: pressing a remote key locates it automatically',
+      'toast.locateOff': 'Auto-locate off',
+      'toast.themeLight': 'Switched to the light theme',
+      'toast.themeDark': 'Switched back to the dark theme',
+      'toast.nothingPicked': 'Nothing is ticked yet',
+      'toast.cleanupStarted': 'Cleanup started',
+      'toast.cleanupFail': 'Failed to start the cleanup',
+      'toast.applied': 'Applied',
+      'toast.applyFail': 'Failed to apply',
+      'toast.langZh': 'Switched to Chinese',
+      'toast.langEn': 'Switched to English',
+      'confirm.recommended': 'Overwrite all current key mappings with the recommended set?',
+      'confirm.clearAll': 'Clear all key mappings?',
+      'uninstall.confirmHead': 'These {0} item(s) will be deleted:',
+      'uninstall.confirmKeep': 'Anything not ticked is left untouched.',
+      'uninstall.confirmAdmin': 'Some selected items need administrator rights; one UAC prompt will appear.',
+      'uninstall.confirmKills': 'At the end of the cleanup the client quits itself (losing the page is expected); afterwards, double-click the launcher (启动遥控器.vbs) to reinstall.',
+      'uninstall.confirmNoKill': 'The client will not be stopped, so you can keep using it after the cleanup.'
+    }
+  };
+
+  // t('key', a, b)：查当前语言 → 回落中文 → 再回落 key 本身；{0}/{1} 会被后面的参数替换
+  function t(key) {
+    var dict = I18N[LANG] || I18N.zh;
+    var s = dict[key];
+    if (s == null) s = I18N.zh[key];
+    if (s == null) return key;
+    if (arguments.length > 1) {
+      var args = Array.prototype.slice.call(arguments, 1);
+      s = s.replace(/\{(\d+)\}/g, function (m, i) {
+        var v = args[Number(i)];
+        return v == null ? '' : String(v);
+      });
+    }
+    return s;
+  }
+
+  // 检测浏览器语言：只有明确是中文或英文才认，其它一律中文（默认必须是中文）
+  function detectLang() {
+    var raw;
+    try { raw = navigator.language; } catch (e) { raw = null; }
+    if (typeof raw !== 'string') return 'zh';   // 读不到 / 不是字符串 → 中文
+    var s = raw.toLowerCase();
+    if (s.indexOf('zh') === 0) return 'zh';     // zh / zh-CN / zh-Hans…
+    if (s.indexOf('en') === 0) return 'en';     // en / en-US / en-GB…
+    return 'zh';                                // 既不是中文也不像英文 → 中文
+  }
+
+  // 用户手动切过就记住（localStorage 只存"外观偏好"，不是配置）
+  function currentLang() {
+    try {
+      var saved = localStorage.getItem(LANG_KEY);
+      if (saved === 'zh' || saved === 'en') return saved;
+    } catch (e) { /* 隐私模式下读不到，忽略 */ }
+    return detectLang();
+  }
+
+  // 静态节点回填：textContent / innerHTML / placeholder / title
+  function applyStaticI18n() {
+    $$('[data-i18n]').forEach(function (n) {
+      var k = n.getAttribute('data-i18n');
+      if (k) n.textContent = t(k);
+    });
+    $$('[data-i18n-html]').forEach(function (n) {
+      var k = n.getAttribute('data-i18n-html');
+      if (k) n.innerHTML = t(k);
+    });
+    $$('[data-i18n-placeholder]').forEach(function (n) {
+      var k = n.getAttribute('data-i18n-placeholder');
+      if (k) n.setAttribute('placeholder', t(k));
+    });
+    $$('[data-i18n-title]').forEach(function (n) {
+      var k = n.getAttribute('data-i18n-title');
+      if (k) n.setAttribute('title', t(k));
+    });
+  }
+
+  // 换语言 = 回填静态节点 + 重渲染所有依赖语言的动态部分（不刷新页面就生效）
+  function applyLang() {
+    document.documentElement.setAttribute('lang', LANG === 'zh' ? 'zh-CN' : 'en');
+    document.title = t('appTitle');
+    applyStaticI18n();
+
+    var sel = $('#langSel');
+    if (sel) sel.value = LANG;
+    applyConn();
+    resetSignal();
+    renderPageTitle();
+    renderPadNames();
+    renderPadLabels();
+    renderMappingPanel();
+    renderVoiceTip();
+    renderThemeNow();
+    renderDelItems();
+    updateDelBtn();
+    if (PROFILES) renderProfilePreview();
+    if (state || stateTried) renderState();   // 里面有依赖横幅 / 千问状态 / 设置页联动
+    var le = $('.log-empty');
+    if (le) le.textContent = t('log.empty');
+  }
+
+  // 告诉后端界面语言（它据此换自己发的中文/英文消息）；失败不影响界面
+  function notifyLang(lang) {
+    api('/api/action', { method: 'POST', body: JSON.stringify({ action: 'set-lang', lang: lang }) });
+  }
+
+  // 用户手动切换：记住 + 立刻生效 + 通知后端
+  function setLang(lang, remember) {
+    LANG = (lang === 'en') ? 'en' : 'zh';
+    if (remember) {
+      try { localStorage.setItem(LANG_KEY, LANG); } catch (e) { /* 忽略 */ }
+    }
+    applyLang();
+    notifyLang(LANG);
+    toast(t(LANG === 'en' ? 'toast.langEn' : 'toast.langZh'));
+  }
+
+  /* ==================== 常量 ==================== */
+  // 修饰键顺序：左右分开，RALT / RCTRL 排最前
+  var MOD_ORDER = ['RALT', 'RCTRL', 'CTRL', 'SHIFT', 'ALT', 'LWIN', 'RSHIFT', 'RWIN'];
+  var MOD_LABEL = {
+    RALT: 'RAlt', RCTRL: 'RCtrl', CTRL: 'Ctrl', SHIFT: 'Shift',
+    ALT: 'Alt', LWIN: 'Win', RSHIFT: 'RShift', RWIN: 'RWin'
+  };
+  var MOD_CODES = {
+    ControlLeft: 1, ControlRight: 1, ShiftLeft: 1, ShiftRight: 1,
+    AltLeft: 1, AltRight: 1, MetaLeft: 1, MetaRight: 1
+  };
+
+  // 物理键盘 e.code → 后端目标键写法（大写、无空格）
+  var CODE_MAP = {
+    Enter: 'ENTER', NumpadEnter: 'NUM_ENTER', Escape: 'ESC', Backspace: 'BACKSPACE',
+    Tab: 'TAB', Space: 'SPACE', CapsLock: 'CAPSLOCK', Delete: 'DELETE', Insert: 'INSERT',
+    BracketLeft: 'LBRACKET', BracketRight: 'RBRACKET', Backquote: 'BACKQUOTE',
+    Equal: 'EQUAL', Minus: 'MINUS', Comma: 'COMMA', Period: 'PERIOD', Slash: 'SLASH',
+    Semicolon: 'SEMICOLON', Quote: 'QUOTE', Backslash: 'BACKSLASH',
+    AltRight: 'RALT', AltLeft: 'LALT', ControlRight: 'RCTRL', ControlLeft: 'LCTRL',
+    ShiftRight: 'RSHIFT', ShiftLeft: 'LSHIFT', MetaRight: 'RWIN', MetaLeft: 'LWIN',
+    ArrowUp: 'UP', ArrowDown: 'DOWN', ArrowLeft: 'LEFT', ArrowRight: 'RIGHT',
+    Home: 'HOME', End: 'END', PageUp: 'PAGEUP', PageDown: 'PAGEDOWN',
+    PrintScreen: 'PRINTSCREEN', ScrollLock: 'SCROLLLOCK', Pause: 'PAUSE',
+    NumpadAdd: 'NUM_ADD', NumpadSubtract: 'NUM_SUB', NumpadMultiply: 'NUM_MUL',
+    NumpadDivide: 'NUM_DIV', NumpadDecimal: 'NUM_DOT'
+  };
+
+  function codeToKey(code) {
+    if (!code) return '';
+    if (CODE_MAP[code]) return CODE_MAP[code];
+    if (/^Key[A-Z]$/.test(code)) return code.slice(3);
+    if (/^Digit[0-9]$/.test(code)) return code.slice(5);
+    if (/^Numpad[0-9]$/.test(code)) return 'NUM_' + code.slice(6);
+    if (/^F[0-9]{1,2}$/.test(code)) return code;
+    return code.toUpperCase();
+  }
+
+  var KEY_LABEL = {
+    ENTER: 'Enter', ESC: 'Esc', BACKSPACE: 'Backspace', TAB: 'Tab', SPACE: 'Space',
+    LBRACKET: '[', RBRACKET: ']', BACKQUOTE: '`', EQUAL: '=', MINUS: '-',
+    COMMA: ',', PERIOD: '.', SLASH: '/', SEMICOLON: ';', QUOTE: "'", BACKSLASH: '\\',
+    CAPSLOCK: 'CapsLock', DELETE: 'Delete', INSERT: 'Insert',
+    UP: '↑', DOWN: '↓', LEFT: '←', RIGHT: '→',
+    HOME: 'Home', END: 'End', PAGEUP: 'PageUp', PAGEDOWN: 'PageDown',
+    LALT: 'LAlt', RALT: 'RAlt', LCTRL: 'LCtrl', RCTRL: 'RCtrl',
+    LSHIFT: 'LShift', RSHIFT: 'RShift', LWIN: 'LWin', RWIN: 'RWin', WIN: 'Win'
+  };
+  function keyLabel(k) { return KEY_LABEL[k] || k || '—'; }
+
+  // 这里存的是 i18n key，显示时统一走 t()（换语言后重渲染即可，不用重建 DOM）
+  var MOUSE_LABEL = {
+    wheel_up: 'mouse.wheelUp', wheel_down: 'mouse.wheelDown',
+    left: 'mouse.left', right: 'mouse.right', middle: 'mouse.middle'
+  };
+  var MOUSE_VALUES = ['wheel_up', 'wheel_down', 'left', 'right', 'middle'];
+
+  // 按键实物排布
+  var DPAD = [
+    { id: 'up', name: 'kname.up' }, { id: 'left', name: 'kname.left' }, { id: 'ok', name: 'kname.ok' },
+    { id: 'right', name: 'kname.right' }, { id: 'down', name: 'kname.down' }
+  ];
+  var PAD_MAIN = [
+    { id: 'back', name: 'kname.back' }, { id: 'voice', name: 'kname.voice' },
+    { id: 'home', name: 'kname.home' }, { id: 'mute', name: 'kname.mute' },
+    { id: 'youtube', name: 'kname.youtube' }, { id: 'netflix', name: 'kname.netflix' },
+    { id: 'power', name: 'kname.power' }, { id: 'input', name: 'kname.input' }
+  ];
+  var PAD_SIDE = [
+    { id: 'volup', name: '+', sub: 'kname.volupSub' },
+    { id: 'voldown', name: '−', sub: 'kname.voldownSub' }
+  ];
+  var ALL_DEFS = DPAD.concat(PAD_MAIN, PAD_SIDE);
+  var KEY_NAME = {};
+  ALL_DEFS.forEach(function (d) { KEY_NAME[d.id] = d.name; });
+  // 按键显示名：字典里没有的 id 直接显示 id 本身
+  function keyName(id) { return KEY_NAME[id] ? t(KEY_NAME[id]) : id; }
+
+  // 推荐配置（前端硬编码）
+  var RECOMMENDED_KEYS = {
+    ok: { type: 'key', value: 'ENTER', mods: [], text: '' },
+    back: { type: 'key', value: 'ESC', mods: [], text: '' },
+    up: { type: 'holdmouse', value: 'wheel_up', mods: [], text: '' },
+    down: { type: 'holdmouse', value: 'wheel_down', mods: [], text: '' },
+    left: { type: 'combo', value: 'LBRACKET', mods: ['CTRL', 'SHIFT'], text: '' },
+    right: { type: 'combo', value: 'RBRACKET', mods: ['CTRL', 'SHIFT'], text: '' },
+    home: { type: 'combo', value: 'A', mods: ['CTRL', 'ALT'], text: '' },
+    power: { type: 'combo', value: 'N', mods: ['CTRL'], text: '' },
+    input: { type: 'combo', value: 'P', mods: ['CTRL'], text: '' },
+    youtube: { type: 'combo', value: 'BACKQUOTE', mods: ['CTRL'], text: '' },
+    mute: { type: 'combo', value: 'J', mods: ['CTRL'], text: '' },
+    netflix: { type: 'combo', value: 'R', mods: ['CTRL'], text: '' },
+    volup: { type: 'combo', value: 'EQUAL', mods: ['CTRL'], text: '' },
+    voldown: { type: 'combo', value: 'MINUS', mods: ['CTRL'], text: '' },
+    voice: { type: 'hold', value: 'RALT', mods: [], text: '' }
+  };
+  var RECOMMENDED_VOICE = { mode: 'hold', key: 'RALT', mods: [] };
+
+  // 输入法预设（tip 存 i18n key）
+  var VOICE_PRESETS = {
+    qwen: { mode: 'hold', key: 'RALT', mods: [], tip: '' },
+    sogou: { mode: 'hold', key: 'RCTRL', mods: [], tip: '' },
+    wechat: { mode: 'hold', key: 'LWIN', mods: ['CTRL', 'LWIN'], tip: '' },
+    win: { mode: 'tap', key: 'H', mods: ['LWIN'], tip: '' },
+    doubao: { mode: 'hold', key: 'RALT', mods: [], tip: 'voice.tip.doubao' },
+    custom: null
+  };
+
+  var PAGE_TITLE_KEY = {
+    status: 'page.status', keys: 'page.keys', voice: 'page.voice',
+    settings: 'page.settings', log: 'page.log'
+  };
+  var currentPage = 'status';
+
+  /* ==================== 运行时状态 ==================== */
+  var state = null;          // /api/state
+  var stateTried = false;    // 是否至少读过一次状态（决定"无法连接"文案能不能显示）
+  var config = null;         // /api/config（以服务端为准）
+  var configLoaded = false;  // 未成功读到后端配置前，禁止保存
+  var selectedKey = null;
+  var locateMode = false;
+  var logPaused = false;
+  var signalTimer = null;
+  var jobTimer = null;
+  var activeJob = null;
+  var keyEls = {};
+
+  /* ==================== Toast ==================== */
+  function toast(msg, isBad) {
+    var wrap = $('#toastWrap');
+    var t = el('div', 'toast' + (isBad ? ' bad' : ''), msg || '');
+    wrap.appendChild(t);
+    setTimeout(function () {
+      t.style.transition = 'opacity .25s';
+      t.style.opacity = '0';
+      setTimeout(function () { if (t.parentNode) t.parentNode.removeChild(t); }, 260);
+    }, isBad ? 4200 : 2400);
+  }
+
+  /* ==================== HTTP ==================== */
+  function api(path, opts) {
+    var o = Object.assign({ headers: { 'Content-Type': 'application/json' } }, opts || {});
+    return fetch(path, o).then(function (r) { return r.json(); }).catch(function () { return null; });
+  }
+
+  /* ==================== 状态渲染 ==================== */
+  // 连接状态：只记 key，换语言时按 key 重新取词（不然会停在旧语言）
+  var connKind = 'idle';
+  var connKey = 'conn.connecting';
+
+  function applyConn() {
+    var c = $('#conn');
+    if (c) c.className = 'conn ' + connKind;
+    var tx = $('#connText');
+    if (tx) tx.textContent = t(connKey);
+  }
+
+  function setConn(kind, key) {
+    connKind = kind;
+    connKey = key;
+    applyConn();
+  }
+
+  function dot(cls) {
+    var d = el('span', 'dot' + (cls ? ' ' + cls : ''));
+    return d;
+  }
+
+  function srow(label, node) {
+    var r = el('div', 'srow');
+    r.appendChild(el('span', 'k', label));
+    var v = el('span', 'v');
+    if (typeof node === 'string') v.textContent = node; else v.appendChild(node);
+    r.appendChild(v);
+    return r;
+  }
+
+  function renderState() {
+    var s = state;
+    var rows = $('#stateRows');
+    var heroPill = $('#heroPill'), heroText = $('#heroText'), heroMeta = $('#heroMeta');
+    rows.innerHTML = '';
+
+    if (!s) {
+      heroPill.className = 'pill bad';
+      heroPill.textContent = t('hero.noConn');
+      heroText.textContent = t('hero.noConnText');
+      heroMeta.textContent = t('hero.noConnMeta');
+      rows.appendChild(srow(t('st.client'), t('row.clientDown')));
+      rows.appendChild(srow(t('row.next'), t('row.nextStep')));
+      setConn('off', 'conn.idle');
+      renderDeps(null);
+      renderSetup(null);
+      renderCable(null);
+      return;
+    }
+
+    var running = !!s.running;
+    heroPill.className = 'pill ' + (running ? 'ok' : 'bad');
+    heroPill.textContent = running ? t('st.running') : t('st.stopped');
+    heroText.textContent = running ? t('hero.runningText') : t('hero.stoppedText');
+    var meta = [];
+    if (s.remote_addr) meta.push(t('hero.remote', s.remote_addr));
+    if (s.versions && s.versions.python) meta.push('Python ' + s.versions.python);
+    heroMeta.textContent = meta.length ? meta.join(' · ') : t('hero.noRemote');
+
+    var voice = s.voice || {};
+    var keys = s.keys || {};
+
+    var v = el('span');
+    v.appendChild(dot(voice.ready ? 'ok' : 'warn'));
+    v.appendChild(el('span', null, voice.ready ? t('st.ready') : t('st.notReady')));
+    if (voice.note) v.appendChild(el('span', 'sub', voice.note));
+    rows.appendChild(srow(t('st.voice'), v));
+
+    var kv = el('span');
+    kv.appendChild(dot(keys.ready ? 'ok' : 'bad'));
+    kv.appendChild(el('span', null, keys.ready ? t('st.ready') : t('st.notReady')));
+    if (typeof keys.blocked_count === 'number') {
+      kv.appendChild(el('span', 'sub', t('st.blocked', keys.blocked_count)));
+    }
+    if (keys.note) kv.appendChild(el('span', 'sub', keys.note));
+    rows.appendChild(srow(t('st.keys'), kv));
+
+    rows.appendChild(srow(t('st.client'), running ? t('st.running') : t('st.stopped')));
+    rows.appendChild(srow(t('st.remoteAddr'), s.remote_addr || t('st.notSet')));
+
+    var btv = el('span');
+    var connected = !!(voice.connected);
+    btv.appendChild(dot(running && connected ? 'ok' : (running ? 'warn' : 'bad')));
+    btv.appendChild(el('span', null, connected ? t('st.connected') : t('st.disconnected')));
+    rows.appendChild(srow(t('st.bt'), btv));
+
+    rows.appendChild(srow(t('st.autostart'), s.autostart ? t('st.on') : t('st.off')));
+    // Frida 残留 = UAC 会不会反复弹的根源。不显示的话，用户只会看到"又弹框了"。
+    var fl = s.frida_leftovers;
+    if (fl && (fl.services || fl.helpers) && !s.elevated) {
+      var flv = el('span');
+      flv.appendChild(dot('warn'));
+      flv.appendChild(el('span', null, t('st.fridaVal', fl.services, fl.helpers)));
+      var frow = srow(t('st.frida'), flv);
+      frow.title = t('st.fridaTip');
+      rows.appendChild(frow);
+    }
+    if (s.versions && s.versions.python) {
+      // 顺带说清依赖是从哪来的：离线全量包跑的是自带 runtime，不是系统 Python / .venv
+      rows.appendChild(srow('Python', s.versions.python +
+        (s.versions.runtime ? t('st.runtime', s.versions.runtime) : '')));
+    }
+
+    renderDeps(s.deps);
+    renderSetup(s);
+    renderQwen(s);
+    renderCable(s.cable);
+
+    if (running) setConn('on', 'conn.connected');
+    else setConn('idle', 'conn.idle');
+
+    // 设置页少量联动
+    var py = $('#pyVal');
+    if (py) {
+      py.textContent = (s.versions && s.versions.python)
+        ? s.versions.python + (s.versions.runtime ? t('st.runtime', s.versions.runtime) : '')
+        : '—';
+    }
+    var ver = $('#verVal');
+    if (ver) ver.textContent = (s.versions && s.versions.app) ? ('v' + s.versions.app) : '—';
+    var home = $('#homeVal');
+    if (home) {
+      home.textContent = s.home || '—';
+      home.title = t('st.homeTip');
+    }
+    var asw = $('#autostart');
+    if (asw && document.activeElement !== asw) asw.checked = !!s.autostart;
+  }
+
+  /* 千问「允许注入」这块的状态显示。
+     规矩：**没装千问就别摆按钮**（点了没反应的按钮比不摆更糟，用户会以为程序坏了）；
+     装了就明确告诉他现在是开还是关、以及"下次启动会自动打开"。 */
+  function renderQwen(s) {
+    var hint = $('#qwenState'), btn = $('#btnQwen');
+    if (!hint || !btn) return;
+    var inst = s.qwen_installed !== false;      // 后端没给这个字段时按"装了"处理
+    var on = !!s.qwen_flag;
+    var optout = !!s.qwen_optout;
+    hint.hidden = false;
+    if (!inst) {
+      hint.textContent = t('qwen.noIme');
+      btn.hidden = true;
+      return;
+    }
+    btn.hidden = false;
+    if (on) {
+      hint.textContent = t('qwen.on');
+      btn.textContent = t('qwen.reopen');
+    } else if (optout) {
+      hint.textContent = t('qwen.optout');
+      btn.textContent = t('qwen.open');
+    } else {
+      hint.textContent = t('qwen.off');
+      btn.textContent = t('qwen.open');
+    }
+  }
+
+  /* ==================== 首页「首次准备」清单 ====================
+     用户的原话：把「虚拟声卡安装、开机自启动、一键优化、注入千问」都摆到首页来。
+     这五件事原来散在「设置」页的四个卡片里 —— 新用户根本不知道要去找，于是
+     "按了语音键没反应""方向键没反应""怎么又弹 UAC"全变成了猜谜。
+     所以：固定顺序（必需的在前面）、每项一个按钮，且按钮跟设置页**走同一条路径**
+     （直接复用 installDeps / installCableNow / doAction，不另写一套）。 */
+  function renderSetup(s) {
+    var box = $('#setupRows');
+    if (!box) return;
+    var hint = $('#setupHint');
+    box.innerHTML = '';
+    if (!s) {
+      box.appendChild(srow(t('setup.title'), t('row.loading')));
+      if (hint) hint.textContent = '';
+      return;
+    }
+    var deps = s.deps || {};
+    var cable = s.cable || {};
+    var done = 0;
+
+    function add(name, must, ok, stateText, btnText, onclick, tip, tagText) {
+      if (ok) done++;
+      var k = el('span', 'k');
+      k.appendChild(el('span', null, name));
+      k.appendChild(el('span', 'setup-tag' + (must ? ' must' : ''),
+                       tagText || (must ? t('setup.must') : t('setup.opt'))));
+      var v = el('span', 'v');
+      v.appendChild(dot(ok ? 'ok' : 'bad'));
+      v.appendChild(el('span', null, stateText));
+      if (btnText) {
+        var b = el('button', 'btn sm');
+        b.type = 'button';
+        b.textContent = btnText;
+        b.addEventListener('click', function () { onclick(b); });
+        v.appendChild(b);
+      }
+      var row = el('div', 'srow');
+      row.appendChild(k);
+      row.appendChild(v);
+      if (tip) row.title = tip;
+      box.appendChild(row);
+    }
+
+    // ① 运行依赖。判定用 deps.ok（**基础依赖**）而不是"连 frida 一起齐" ——
+    //    frida 是可选项，为它把一整行标红会把人逼着去下不需要的东西；
+    //    缺它的时候只在文字里说一句（「按键映射还差 frida（可选）」）。
+    //    标签特意写「语音必需」而不是笼统的「必需」—— 免得被读成"按键映射也必需"。
+    var baseMiss = Array.isArray(deps.missing) ? deps.missing.length : 0;
+    var keyMiss = Array.isArray(deps.missing_keys) ? deps.missing_keys.length : 0;
+    add(t('setup.deps'), true, !!deps.ok,
+        deps.ok ? (keyMiss ? t('setup.depsKeysBad') : t('setup.depsOk'))
+                : t('setup.depsBad', baseMiss + keyMiss, baseMiss, keyMiss),
+        t('setup.depsBtn'), function () {
+          installDeps('install-all', t('setup.depsBtn'));
+        }, null, t('setup.mustVoice'));
+
+    // ② 虚拟声卡（语音的物理前提）。三种状态分开说，别把"注册表里有"当"能用"：
+    //    设备禁用 / 只装了半边 / 卸载残留 / 刚装完没重启 —— 都会是 registered 但没有设备，
+    //    这时该让人"重启一次或重装"，而不是显示"已装 ✓"然后语音一直没声音。
+    var cableKnown = (typeof cable.installed === 'boolean'
+                      || typeof cable.registered === 'boolean');
+    var cableOk = !!cable.installed;
+    var cableGhost = !cableOk && !!cable.registered;
+    add(t('cable.row'), true, cableOk,
+        !cableKnown ? t('cable.unknown')
+                    : (cableOk ? t('setup.cableOk')
+                               : (cableGhost ? t('setup.cableGhost') : t('setup.cableBad'))),
+        cableOk ? null : t('setup.cableBtn'),
+        function () { installCableNow(); },
+        cableOk ? (cable.device || '') : '');
+
+    // ③ 千问「允许注入」。没装千问就不摆按钮（点了没反应的按钮比不摆更糟）。
+    if (s.qwen_installed === false) {
+      add(t('setup.qwen'), false, false, t('setup.qwenNoIme'), null, null);
+    } else {
+      add(t('setup.qwen'), false, !!s.qwen_flag,
+          s.qwen_flag ? t('setup.qwenOk')
+                      : (s.qwen_optout ? t('setup.qwenOptout') : t('setup.qwenBad')),
+          s.qwen_flag ? t('setup.qwenReopen') : t('setup.qwenBtn'),
+          function () {
+            doAction({ action: 'qwen-inject' }, $('#voiceResult'), t('act.qwenInject'))
+              .then(function () { setTimeout(loadState, 900); });
+          });
+    }
+
+    // ④ 开机自启
+    add(t('setup.boot'), false, !!s.autostart,
+        s.autostart ? t('setup.bootOk') : t('setup.bootBad'),
+        s.autostart ? t('setup.bootOff') : t('setup.bootOn'),
+        function () {
+          doAction({ action: 'autostart', on: !s.autostart }).then(function (r) {
+            if (r && r.ok) setTimeout(loadState, 500);
+          });
+        });
+
+    // ⑤ 一键优化：做了之后 Frida 不再弹 UAC（开机自启走最高权限计划任务）
+    add(t('setup.uac'), false, !!s.optimized,
+        s.optimized ? t('setup.uacOk') : t('setup.uacBad'),
+        s.optimized ? null : t('setup.uacBtn'),
+        function () {
+          doAction({ action: 'setup-elevated' }, $('#checkBox'), t('act.optimize'))
+            .then(function (r) { if (r && r.ok) setTimeout(loadState, 2000); });
+        });
+
+    // 必需项是前 5 项（运行依赖/声卡/千问注入/自启/一键优化）；后面那行"按键映射依赖"
+    // 是可选项、装不装都不影响"准备好的"判定，所以用 >= 5 而不是 == 5。
+    if (hint) hint.textContent = (done >= 5) ? t('setup.allDone') : t('setup.hint');
+  }
+
+  function renderDeps(deps) {
+    var box = $('#depsRows');
+    var banner = $('#depBanner');
+    var btn = $('#depBannerBtn'), btn2 = $('#depBannerBtn2');
+    var title = $('#depBannerTitle');
+    box.innerHTML = '';
+    btn2.hidden = true;
+    if (!deps) {
+      box.appendChild(srow(t('row.deps'), t('dep.unknown')));
+      banner.hidden = true;
+      return;
+    }
+    var missing = Array.isArray(deps.missing) ? deps.missing : [];
+    // 旧后端不给 cable_ok 时按"有"处理，别把横幅误报成缺虚拟声卡
+    var cableOk = deps.cable_ok !== false;
+    var v = el('span');
+    v.appendChild(dot(deps.ok ? 'ok' : 'bad'));
+    v.appendChild(el('span', null, deps.ok ? t('dep.ok') : t('dep.missing', missing.length)));
+    box.appendChild(srow(t('dep.check'), v));
+
+    // ★ 状态机：真缺 / 装好了没生效 / 只差可选的按键映射 / 齐全
+    //   —— 新用户只会点横幅上那一个按钮，所以四种情况必须给不同的话和不同的按钮，
+    //     不能让他自己去设置页翻第二个按钮（这正是"装了但方向键没反应"的来源）。
+    if (deps.restart_needed) {
+      box.appendChild(srow(t('dep.action'), t('dep.needRestart')));
+      title.textContent = t('dep.restartTitle');
+      $('#depBannerText').textContent = t('dep.restartText');
+      btn.textContent = t('dep.restartBtn');
+      btn.dataset.actb = 'restart-app';
+      banner.hidden = false;
+      return;
+    }
+    if (!deps.ok) {
+      box.appendChild(srow(t('dep.missingLabel'), missing.join(t('listSep'))));
+      title.textContent = t('dep.missingTitle');
+      $('#depBannerText').textContent = t('dep.missingText', missing.join(t('listSep')));
+      // ★ 蓝色主按钮（#depBannerBtn 自带 primary）必须给「全部安装」。
+      //   主按钮不能放"只装语音依赖"：那样最推荐的动作用白按钮显示、
+      //   可选动作反倒最显眼 —— 新用户会只装一半，然后发现方向键没反应。
+      btn.textContent = t('dep.allBtn');
+      btn.dataset.actb = 'install-all';
+      btn2.hidden = false;
+      btn2.textContent = t('dep.voiceOnlyBtn');
+      btn2.dataset.actb = 'install-deps';
+      banner.hidden = false;
+      return;
+    }
+    if (!cableOk) {
+      // Python 依赖好了，但虚拟声卡不在 —— 语音的物理前提，装它只要 1.3MB（包内带了），
+      // 所以这里说清楚"这是最后一件必须做的事"。
+      box.appendChild(srow(t('cable.row'), t('cable.missing')));
+      title.textContent = t('dep.cableTitle');
+      $('#depBannerText').textContent = t('dep.cableText');
+      btn.textContent = t('dep.cableBtn');
+      btn.dataset.actb = 'install-cable';
+      banner.hidden = false;
+      return;
+    }
+    if (deps.cable_ghost) {
+      // 注册表里还有、但枚举不到可用设备（典型：刚卸完还没重启 / 驱动被禁用 / 只装了半边）。
+      // ★ 这种状态**语音同样是坏的**，横幅不能沉默；但该说的不是"点安装"，
+      //   而是"先重启一次"。以前这里不出横幅 —— 用户会以为一切正常，然后一直没声音。
+      // ★★ 重启过还是这样、点安装器里的 Install Driver 也没反应，就是**残留挡住了重装**：
+      //   这时候要多给一个「清除残留」按钮（清完重启再装），否则用户会卡死在这里。
+      box.appendChild(srow(t('cable.row'), t('cable.ghost')));
+      title.textContent = t('dep.cableGhostTitle');
+      $('#depBannerText').textContent = t('dep.cableGhostText');
+      btn.textContent = t('dep.cableGhostBtn');
+      btn.dataset.actb = 'install-cable';
+      btn2.textContent = t('dep.cableGhostBtn2');
+      btn2.dataset.actb = 'clean-cable-residue';
+      btn2.hidden = false;
+      banner.hidden = false;
+      return;
+    }
+    if (!deps.keys_ok) {
+      // 基础依赖好了，只差可选的 frida —— 主动提醒，别让人以为"按键坏了"
+      box.appendChild(srow(t('dep.keysLabel'), t('dep.keysRow')));
+      title.textContent = t('dep.keysTitle');
+      $('#depBannerText').textContent = t('dep.keysText');
+      btn.textContent = t('dep.keysBtn');
+      btn.dataset.actb = 'install-keys';
+      banner.hidden = false;
+      return;
+    }
+    banner.hidden = true;
+  }
+
+  /* ==================== 配置辅助 ==================== */
+  function describe(m) {
+    if (!m || !m.type) return null;
+    var mods = (m.mods || []).map(function (x) { return MOD_LABEL[x] || x; });
+    var v = keyLabel(m.value);
+    var list;
+    switch (m.type) {
+      case 'key': return v;
+      case 'combo':
+        list = mods.concat(m.value ? [v] : []);
+        return list.length ? list.join('+') : '—';
+      case 'hold': return t('map.hold', v);
+      case 'holdcombo':
+        list = mods.concat(m.value ? [v] : []);
+        return t('map.hold', list.length ? list.join('+') : '—');
+      case 'mouse': return MOUSE_LABEL[m.value] ? t(MOUSE_LABEL[m.value]) : (m.value || '—');
+      case 'holdmouse': {
+        var mv = MOUSE_LABEL[m.value] ? t(MOUSE_LABEL[m.value]) : (m.value || '—');
+        // 滚轮按住是"连续滚"，跟"按住左键"不是一回事，标签要分开写
+        var rep = (m.value === 'wheel_up' || m.value === 'wheel_down');
+        return t(rep ? 'map.holdWheel' : 'map.hold', mv);
+      }
+      case 'text':
+        if (!m.text) return t('map.textEmpty');
+        return t('map.textPrefix', m.text.length > 10 ? m.text.slice(0, 10) + '…' : m.text);
+      default: return null;
+    }
+  }
+
+  // 语音键优先读 keys.voice，没有则回落到 /api/config 的 voice 字段
+  function effectiveMapping(id) {
+    var m = (config && config.keys) ? config.keys[id] : null;
+    if (m && m.type) return m;
+    if (id === 'voice' && config && config.voice && config.voice.key) {
+      return {
+        type: config.voice.mode === 'tap' ? 'key' : 'hold',
+        value: config.voice.key,
+        mods: config.voice.mods || [],
+        text: ''
+      };
+    }
+    return null;
+  }
+
+  /* ==================== 按键面板 ==================== */
+  function makeKeyButton(def) {
+    var b = el('button', 'key');
+    b.type = 'button';
+    b.dataset.key = def.id;
+    var n = el('span', 'key-name', t(def.name));
+    var mp = el('span', 'key-map', t('map.unmapped'));
+    b.appendChild(n);
+    b.appendChild(mp);
+    if (def.sub) b.setAttribute('title', t(def.sub));
+    b.addEventListener('click', function () { selectKey(def.id, false); });
+    keyEls[def.id] = b;
+    return b;
+  }
+
+  function buildPad() {
+    var pad = $('#pad');
+    pad.innerHTML = '';
+    var dpad = el('div', 'dpad');
+    DPAD.forEach(function (d) {
+      var b = makeKeyButton(d);
+      b.style.gridArea = d.id;
+      dpad.appendChild(b);
+    });
+    pad.appendChild(dpad);
+    pad.appendChild(el('div', 'pad-sep'));
+
+    var grid = el('div', 'pad-grid');
+    PAD_MAIN.forEach(function (d) { grid.appendChild(makeKeyButton(d)); });
+    pad.appendChild(grid);
+    pad.appendChild(el('div', 'pad-sep'));
+
+    var side = el('div', 'pad-side');
+    side.appendChild(el('span', 'pad-side-label', t('kname.side')));
+    var sk = el('div', 'pad-side-keys');
+    PAD_SIDE.forEach(function (d) {
+      var b = makeKeyButton(d);
+      b.querySelector('.key-name').textContent = t(d.name);
+      sk.appendChild(b);
+    });
+    side.appendChild(sk);
+    pad.appendChild(side);
+  }
+
+  // 键帽上的名字（换语言要跟着变）
+  function renderPadNames() {
+    ALL_DEFS.forEach(function (d) {
+      var b = keyEls[d.id];
+      if (!b) return;
+      var n = b.querySelector('.key-name');
+      if (n) n.textContent = t(d.name);
+    });
+  }
+
+  function renderPadLabels() {
+    ALL_DEFS.forEach(function (d) {
+      var b = keyEls[d.id];
+      if (!b) return;
+      var m = effectiveMapping(d.id);
+      var label = describe(m);
+      var mp = b.querySelector('.key-map');
+      if (label) {
+        mp.textContent = label;
+        b.classList.remove('unmapped');
+      } else {
+        mp.textContent = t('map.unmapped');
+        b.classList.add('unmapped');
+      }
+      if (d.id === selectedKey) b.classList.add('selected');
+      else b.classList.remove('selected');
+    });
+  }
+
+  // 语音页预设备注（换语言要跟着变）
+  function renderVoiceTip() {
+    var tip = $('#voiceTip');
+    if (!tip) return;
+    var sel = $('#voicePreset');
+    var p = sel ? VOICE_PRESETS[sel.value] : null;
+    tip.textContent = (p && p.tip) ? t(p.tip) : '';
+  }
+
+  /* ==================== 映射编辑面板 ==================== */
+  function buildMods(container, checked) {
+    container.innerHTML = '';
+    MOD_ORDER.forEach(function (m) {
+      var lab = el('label', 'mod');
+      var cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.value = m;
+      cb.checked = (checked || []).indexOf(m) >= 0;
+      lab.appendChild(cb);
+      lab.appendChild(el('span', null, MOD_LABEL[m]));
+      container.appendChild(lab);
+    });
+  }
+  function readMods(container) {
+    return $$('input:checked', container).map(function (i) { return i.value; });
+  }
+
+  // 捕获按钮：点击进入捕获态，按物理键后用 e.code 解析
+  // 「按键捕获」不只抓键盘键，**鼠标动作也能抓**：滚一下滚轮 = 滚轮上/下，
+  // 点一下鼠标键 = 左/中/右。抓到鼠标动作时按当前"按一下 / 按住"的语义自动选类型：
+  //   key / combo（按一下）      → mouse     （点一下滚一格）
+  //   hold / holdcombo（按住）   → holdmouse （按住一直滚 / 按住不放，松开才抬）
+  //   mouse / holdmouse          → 保持不变
+  // 这样"按住不放 + 滚轮"不用先绕去类型下拉框里翻。
+  function mouseTypeFor(current) {
+    if (current === 'key' || current === 'combo') return 'mouse';
+    if (current === 'hold' || current === 'holdcombo') return 'holdmouse';
+    return current === 'holdmouse' ? 'holdmouse' : 'mouse';
+  }
+
+  function bindCapture(btn, input, hintEl, isComboType, mouseSelect) {
+    var armed = false;
+    function disarm() {
+      armed = false;
+      btn.classList.remove('armed');
+      btn.textContent = t('map.capture');
+      if (hintEl) hintEl.textContent = '';
+    }
+    function takeMouse(value) {
+      var next = mouseTypeFor($('#mapType').value);
+      $('#mapType').value = next;
+      if (mouseSelect) mouseSelect.value = value;
+      if (input) input.value = '';
+      syncMappingFields();
+      disarm();
+    }
+    btn.addEventListener('click', function () {
+      if (armed) { disarm(); return; }
+      armed = true;
+      btn.classList.add('armed');
+      btn.textContent = t('map.captureArmed');
+      if (hintEl) {
+        hintEl.textContent = (isComboType && isComboType())
+          ? t('map.captureHintCombo')
+          : t('map.captureHint');
+      }
+    });
+    window.addEventListener('keydown', function (e) {
+      if (!armed) return;
+      // combo 类型下忽略纯粹的修饰键，方便用户先按住修饰键再按主键
+      if (isComboType && isComboType() && MOD_CODES[e.code]) {
+        if (hintEl) hintEl.textContent = t('map.captureHintMods');
+        e.preventDefault();
+        return;
+      }
+      e.preventDefault();
+      e.stopPropagation();
+      input.value = codeToKey(e.code);
+      disarm();
+    }, true);
+    // 滚轮：必须 passive:false 才拦得住页面滚动
+    window.addEventListener('wheel', function (e) {
+      if (!armed) return;
+      e.preventDefault();
+      e.stopPropagation();
+      takeMouse(e.deltaY < 0 ? 'wheel_up' : 'wheel_down');
+    }, { capture: true, passive: false });
+    // 鼠标键：点在按钮/输入框上不算（那是"取消捕获"或"改别的字段"）
+    window.addEventListener('mousedown', function (e) {
+      if (!armed) return;
+      if (e.target && e.target.closest && e.target.closest('button, select, input, textarea, a')) return;
+      e.preventDefault();
+      e.stopPropagation();
+      takeMouse(e.button === 0 ? 'left' : (e.button === 1 ? 'middle' : 'right'));
+    }, true);
+  }
+
+  function syncMappingFields() {
+    var type = $('#mapType').value;
+    $('#fieldKey').hidden = !(type === 'key' || type === 'combo' || type === 'hold' || type === 'holdcombo');
+    $('#fieldMods').hidden = !(type === 'combo' || type === 'holdcombo');
+    $('#fieldMouse').hidden = !(type === 'mouse' || type === 'holdmouse');
+    $('#fieldText').hidden = (type !== 'text');
+  }
+
+  function selectKey(id, scroll) {
+    selectedKey = id;
+    renderPadLabels();
+    renderMappingPanel();
+    if (scroll) {
+      var b = keyEls[id];
+      if (b) {
+        b.classList.remove('locate');
+        void b.offsetWidth;
+        b.classList.add('locate');
+        setTimeout(function () { b.classList.remove('locate'); }, 1100);
+        if (window.innerWidth <= 1000 && b.scrollIntoView) {
+          b.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }
+    }
+  }
+
+  function renderMappingPanel() {
+    var head = $('#mappingHead');
+    var empty = $('#mappingEmpty');
+    var form = $('#mappingForm');
+    var hint = $('#mapPanelHint');
+
+    if (!selectedKey) {
+      head.textContent = t('map.edit');
+      empty.hidden = false;
+      form.hidden = true;
+      return;
+    }
+
+    empty.hidden = true;
+    form.hidden = false;
+    head.innerHTML = '';
+    head.appendChild(document.createTextNode(t('map.editOf', keyName(selectedKey))));
+    var badge = el('span', 'badge', selectedKey);
+    head.appendChild(badge);
+
+    var m = (config && config.keys ? config.keys[selectedKey] : null) || null;
+    var shown = m || effectiveMapping(selectedKey);
+
+    $('#mapType').value = shown ? shown.type : 'key';
+    buildMods($('#mapMods'), shown ? shown.mods : []);
+    $('#mapValue').value = (shown && shown.value && MOUSE_VALUES.indexOf(shown.value) < 0) ? shown.value : '';
+    $('#mapText').value = (shown && shown.text) ? shown.text : '';
+    $('#mapMouse').value = (shown && MOUSE_VALUES.indexOf(shown.value) >= 0) ? shown.value : 'wheel_up';
+
+    $('#btnSaveMap').textContent = t('map.save');
+
+    if (selectedKey === 'voice') {
+      hint.textContent = t('map.hintVoice');
+    } else {
+      hint.textContent = t('map.hintSave');
+    }
+    syncMappingFields();
+  }
+
+  function currentPanelMapping() {
+    var type = $('#mapType').value;
+    var m = { type: type, value: '', mods: [], text: '' };
+    if (type === 'key' || type === 'combo' || type === 'hold' || type === 'holdcombo') {
+      m.value = ($('#mapValue').value || '').trim().toUpperCase();
+    } else if (type === 'mouse' || type === 'holdmouse') {
+      m.value = $('#mapMouse').value;
+    } else if (type === 'text') {
+      m.text = $('#mapText').value;
+    }
+    if (type === 'combo' || type === 'holdcombo') m.mods = readMods($('#mapMods'));
+    return m;
+  }
+
+  /* ==================== 保存配置 ==================== */
+  function saveConfig() {
+    if (!configLoaded || !config) {
+      toast(t('toast.notLoaded'), true);
+      return Promise.resolve(false);
+    }
+    return api('/api/config', { method: 'POST', body: JSON.stringify(config) }).then(function (r) {
+      if (r && r.ok) {
+        toast(r.msg || t('toast.saved'));
+        return true;
+      }
+      toast((r && r.msg) || t('toast.saveFail'), true);
+      // 保存失败时以服务端为准重新拉取
+      return loadConfig().then(function () { return false; });
+    });
+  }
+
+  function loadConfig() {
+    return api('/api/config').then(function (r) {
+      // 必须是形如配置对象的响应才接受，否则保持“未读到”状态，避免用空配置覆盖后端
+      if (r && typeof r === 'object' &&
+          ('keys' in r || 'remote_addr' in r || 'voice' in r || 'audio' in r)) {
+        config = normalizeConfig(r);
+        configLoaded = true;
+      } else {
+        configLoaded = false;
+        toast(t('toast.loadConfigFail'), true);
+      }
+      renderConfigAll();
+      return configLoaded;
+    });
+  }
+
+  function normalizeConfig(r) {
+    var keys = {};
+    if (r.keys && typeof r.keys === 'object') {
+      Object.keys(r.keys).forEach(function (k) {
+        var m = r.keys[k];
+        if (m && typeof m === 'object' && m.type) {
+          keys[k] = {
+            type: m.type,
+            value: m.value == null ? '' : String(m.value),
+            mods: Array.isArray(m.mods) ? m.mods.slice() : [],
+            text: m.text == null ? '' : String(m.text)
+          };
+        }
+      });
+    }
+    return {
+      remote_addr: r.remote_addr == null ? '' : String(r.remote_addr),
+      voice: {
+        mode: (r.voice && r.voice.mode) || 'hold',
+        key: (r.voice && r.voice.key) || '',
+        mods: (r.voice && Array.isArray(r.voice.mods)) ? r.voice.mods.slice() : []
+      },
+      audio: {
+        gain: (r.audio && typeof r.audio.gain === 'number') ? r.audio.gain : 4.0,
+        agc: !!(r.audio && r.audio.agc),
+        relay: !!(r.audio && r.audio.relay)
+      },
+      keys: keys
+    };
+  }
+
+  function renderConfigAll() {
+    if (!config) return;
+    renderPadLabels();
+    if (selectedKey) renderMappingPanel();
+    // 语音页
+    if (document.activeElement !== $('#voiceMode')) $('#voiceMode').value = config.voice.mode || 'hold';
+    if (document.activeElement !== $('#voiceKey')) $('#voiceKey').value = config.voice.key || '';
+    buildMods($('#voiceMods'), config.voice.mods);
+    // 设置页
+    if (document.activeElement !== $('#remoteAddr')) $('#remoteAddr').value = config.remote_addr || '';
+    var g = $('#gain');
+    if (document.activeElement !== g) {
+      g.value = config.audio.gain;
+      $('#gainVal').textContent = Number(config.audio.gain).toFixed(1) + '×';
+    }
+    $('#agc').checked = !!config.audio.agc;
+    $('#relay').checked = !!config.audio.relay;
+  }
+
+  /* ==================== 日志 ==================== */
+  function appendLog(line, cls) {
+    var box = $('#logBox');
+    var emptyNode = $('.log-empty', box);
+    if (emptyNode) box.removeChild(emptyNode);
+    var d = el('div', 'log-line' + (cls ? ' ' + cls : ''), line);
+    box.appendChild(d);
+    while (box.children.length > 500) box.removeChild(box.firstChild);
+    if (!logPaused) box.scrollTop = box.scrollHeight;
+  }
+
+  function appendResultLine(box, line, cls) {
+    var d = el('div', 'result-line' + (cls ? ' ' + cls : ''), line);
+    box.appendChild(d);
+    box.scrollTop = box.scrollHeight;
+  }
+
+  /* ==================== 遥控器实时事件 ==================== */
+  // 回到"等待信号"的静止态（换语言时也用它，免得停在旧语言）
+  function resetSignal() {
+    var sig = $('#signal');
+    var txt = $('#sigText');
+    if (txt) txt.textContent = t('sig.wait');
+    if (sig) sig.classList.remove('mapped', 'unmapped', 'flash');
+  }
+
+  function signalPing(id, down) {
+    var sig = $('#signal');
+    var txt = $('#sigText');
+    var mapped = !!effectiveMapping(id);
+    sig.classList.remove('flash');
+    void sig.offsetWidth;
+    sig.classList.add('flash');
+    sig.classList.toggle('mapped', mapped);
+    sig.classList.toggle('unmapped', !mapped);
+    txt.textContent = (down ? t('sig.down', keyName(id)) : t('sig.up', keyName(id)))
+      + (mapped ? '' : t('sig.unmapped'));
+    clearTimeout(signalTimer);
+    signalTimer = setTimeout(resetSignal, 2600);
+  }
+
+  function onKeyEvent(id, down) {
+    signalPing(id, down);
+    var b = keyEls[id];
+    if (b) {
+      if (down) {
+        b.classList.add('down');
+        b.classList.remove('pulse');
+        void b.offsetWidth;
+        b.classList.add('pulse');
+      } else {
+        b.classList.remove('down');
+      }
+      setTimeout(function () { b.classList.remove('pulse'); }, 520);
+    }
+    if (down && locateMode) selectKey(id, true);
+  }
+
+  /* ==================== 清理完成的提示 ====================
+     难点：清理的最后一步就是**把客户端自己杀掉**，所以不能指望它还能回话。
+     双保险：
+       ① 后端在结束自己之前推一个 SSE 事件（能收到就用它）
+       ② 前端记着"正在清理"，一旦发现状态取不到（客户端已死）也照样弹完成提示
+  ==================================================================== */
+  var uninstallPending = false;
+
+  /* 清理完成的提示。三个地方都要留痕，因为**用户此刻被切到了「日志」页**：
+       ① 顶部横幅（哪一页都看得见，还会自动滚到视野中间）
+       ② 「清理 / 卸载」卡片里的结果区（回设置页还能看到，失败了就一直挂在那）
+       ③ 日志页一行
+     另外：只删 __pycache__ / 日志这类时客户端**不会退出**，不能说"已退出"吓人。 */
+  function showCleanupDone(msg, failed, killsClient) {
+    uninstallPending = false;
+    var fails = failed || [];
+    var done = msg || t('cleanup.defaultDone');
+    var tail = (killsClient === false) ? t('cleanup.tailKeep') : t('cleanup.tailKilled');
+    var failLine = fails.length ? t('cleanup.failLine', fails.join(t('listSep'))) : '';
+    var head = fails.length ? t('cleanup.headWarn', fails.length) : t('cleanup.headDone');
+
+    var ub = $('#uninstallBox');
+    if (ub) {
+      ub.hidden = false;
+      appendResultLine(ub, head, 'result-head');
+      appendResultLine(ub, done + tail);
+      if (fails.length) appendResultLine(ub, failLine.trim());
+    }
+    appendLog(t('cleanup.logDone', done));
+
+    // ★ 每次都**重画**这条横幅（原来只在"还没有"的时候创建）。
+    //   一次会话里跑两次清理时（第一次不含 kill/venv，客户端不退出），
+    //   第二次的结果原来完全不会出现在横幅上 —— 上次成功、这次有失败项，
+    //   顶部还挂着绿色的「✅ 清理完成」，是**在骗人**。
+    var old = document.getElementById('cleanupDone');
+    if (old && old.parentNode) old.parentNode.removeChild(old);
+    var wrap = el('div', 'banner');
+    wrap.id = 'cleanupDone';
+    wrap.style.borderColor = fails.length ? 'var(--warn-6)' : 'var(--ok-6)';
+    wrap.style.background = fails.length ? 'var(--warn-3)' : 'var(--ok-3)';
+    var left = el('div');
+    left.appendChild(el('strong', null, head));
+    var sub = el('div', 'banner-sub');
+    sub.style.color = fails.length ? 'var(--warn-12)' : 'var(--ok-12)';
+    sub.textContent = done + tail + failLine;
+    left.appendChild(sub);
+    wrap.appendChild(left);
+    var content = $('.content') || document.body;
+    content.insertBefore(wrap, content.firstChild);
+    // 用户此刻在「日志」页，顶部横幅会被日志工具栏挡住 —— 滚到它那里去
+    if (wrap.scrollIntoView) wrap.scrollIntoView({ block: 'center' });
+    toast(fails.length ? t('cleanup.toastWarn', fails.length) : t('cleanup.toastDone'));
+  }
+
+  /* ==================== SSE ==================== */
+  function connectSSE() {
+    var es;
+    try { es = new EventSource('/api/events'); } catch (e) { return; }
+    es.onopen = function () {
+      if (state && state.running) setConn('on', 'conn.connected');
+      else setConn('idle', 'conn.idle');
+    };
+    es.onerror = function () {
+      setConn('off', 'conn.down');
+    };
+    es.onmessage = function (e) {
+      var m;
+      try { m = JSON.parse(e.data); } catch (err) { return; }
+      if (!m || !m.ev) return;
+      if (m.ev === 'log') {
+        appendLog(m.line || '');
+      } else if (m.ev === 'uninstalled') {
+        // 后端清理完、即将自我结束前推的事件
+        showCleanupDone(m.msg, m.failed, m.kills_client);
+      } else if (m.ev === 'key') {
+        onKeyEvent(m.id, !!m.down);
+      } else if (m.ev === 'state') {
+        if (m.state) {
+          state = m.state;
+          renderState();
+          // 若 state 里带了 config，也以后端为准
+          // ★ 必须校验形状：`config` 不是对象时 normalizeConfig() 会把前端配置清成
+          //   空默认值并把 configLoaded 置真 —— 之后用户点「保存设置」就会拿空配置
+          //   覆盖后端（丢按键映射和蓝牙地址）。fetch 那条路径本来就有这个校验，
+          //   SSE 这条漏了。（state_snapshot 目前并不带 config，所以这是个埋着的雷。）
+          if (m.state.config && typeof m.state.config === 'object') {
+            config = normalizeConfig(m.state.config);
+            configLoaded = true;
+            renderConfigAll();
+          }
+        }
+      } else if (m.ev === 'job') {
+        appendLog('[' + (m.job || 'task') + '] ' + (m.line || ''), 'job');
+        if (m.done) appendLog('[' + (m.job || 'task') + '] ' + t('job.ended'), 'job');
+      }
+    };
+  }
+
+  /* ==================== 任务轮询 ==================== */
+  function startJob(jobId, box, title) {
+    if (jobTimer) { clearInterval(jobTimer); jobTimer = null; }
+    activeJob = jobId;
+    box.hidden = false;
+    box.innerHTML = '';
+    var head = el('div', 'result-line result-head', (title || t('job.task')) + t('job.running'));
+    box.appendChild(head);
+    var seen = 0;
+    var tick = function () {
+      api('/api/job?id=' + encodeURIComponent(jobId)).then(function (r) {
+        if (!r) return;
+        var lines = Array.isArray(r.lines) ? r.lines : [];
+        for (var i = seen; i < lines.length; i++) appendResultLine(box, lines[i]);
+        seen = lines.length;
+        if (r.done) {
+          clearInterval(jobTimer);
+          jobTimer = null;
+          activeJob = null;
+          head.textContent = (title || t('job.task')) + t('job.done');
+          // 装完依赖后，把「下一步该干什么」直接说出来，别让用户自己猜
+          api('/api/state').then(function (st) {
+            state = (st && typeof st === 'object' && 'running' in st) ? st : state;
+            stateTried = true;
+            renderState();
+            var d = (st && st.deps) || {};
+            if (d.ok && d.restart_needed) {
+              head.textContent += t('job.restartHint');
+              toast(t('job.toastRestart'));
+            } else if (d.ok && d.keys_ok) {
+              toast(t('job.toastAllReady'));
+            } else if (d.ok) {
+              toast(t('job.toastVoiceReady'));
+            } else {
+              toast(t('job.toastDone'));
+            }
+          });
+        }
+      });
+    };
+    jobTimer = setInterval(tick, 800);
+    tick();
+  }
+
+  /* ==================== 动作 ==================== */
+  function doAction(payload, box, title) {
+    return api('/api/action', { method: 'POST', body: JSON.stringify(payload) }).then(function (r) {
+      if (r && r.ok) {
+        if (r.msg) toast(r.msg);
+        if (r.job && box) startJob(r.job, box, title || t('act.installDeps'));
+      } else {
+        toast((r && r.msg) || t('toast.opFail'), true);
+      }
+      return r;
+    });
+  }
+
+  function actionStart(kind) {
+    var label = { start: t('act.start'), stop: t('act.stop'), restart: t('act.restart') }[kind] || kind;
+    doAction({ action: kind }).then(function (r) {
+      if (r && r.ok) setTimeout(loadState, 900);
+      else toast(t('act.fail', label), true);
+    });
+  }
+
+  /* ==================== 状态轮询 ==================== */
+  function loadState() {
+    return api('/api/state').then(function (r) {
+      state = (r && typeof r === 'object' && 'running' in r) ? r : null;
+      stateTried = true;
+      renderState();
+      // 清理中却读不到状态 = 客户端已经被清理脚本结束了 → 弹完成提示
+      if (!state && uninstallPending) showCleanupDone();
+      return state;
+    });
+  }
+
+  /* ==================== 导出 / 导入 ==================== */
+  function exportConfig() {
+    if (!configLoaded || !config) { toast(t('toast.notLoadedShort'), true); return; }
+    var text = JSON.stringify(config, null, 2);
+    var blob = new Blob([text], { type: 'application/json' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = 'vibe-mote-config.json';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function () { URL.revokeObjectURL(url); }, 1500);
+    toast(t('toast.exported'));
+  }
+
+  function importConfig(file) {
+    var reader = new FileReader();
+    reader.onload = function () {
+      var obj;
+      try { obj = JSON.parse(String(reader.result)); } catch (e) { toast(t('toast.importJson'), true); return; }
+      if (!obj || typeof obj !== 'object') { toast(t('toast.importObj'), true); return; }
+      if (!configLoaded) { toast(t('toast.notLoaded'), true); return; }
+      if (obj.remote_addr != null) config.remote_addr = String(obj.remote_addr);
+      if (obj.audio) {
+        config.audio = {
+          gain: typeof obj.audio.gain === 'number' ? obj.audio.gain : config.audio.gain,
+          agc: !!obj.audio.agc,
+          relay: !!obj.audio.relay
+        };
+      }
+      if (obj.voice && typeof obj.voice === 'object') {
+        config.voice = {
+          mode: obj.voice.mode || 'hold',
+          key: obj.voice.key || '',
+          mods: Array.isArray(obj.voice.mods) ? obj.voice.mods.slice() : []
+        };
+      }
+      if (obj.keys && typeof obj.keys === 'object') {
+        var keys = {};
+        Object.keys(obj.keys).forEach(function (k) {
+          var m = obj.keys[k];
+          if (m && typeof m === 'object' && m.type) {
+            keys[k] = {
+              type: m.type,
+              value: m.value == null ? '' : String(m.value),
+              mods: Array.isArray(m.mods) ? m.mods.slice() : [],
+              text: m.text == null ? '' : String(m.text)
+            };
+          }
+        });
+        config.keys = keys;
+      }
+      renderConfigAll();
+      saveConfig().then(function (ok) { if (ok) toast(t('toast.imported')); });
+    };
+    reader.readAsText(file);
+  }
+
+  /* ==================== 虚拟声卡（语音的物理前提） ====================
+     state.cable = { installed, device, bundled, url, home }
+     ⚠ 后端可能还没有这个字段（老客户端 / 冒烟测试的桩数据）→ 按"未知"渲染，不能崩。
+     铁律：这里不放任何外部资源，官网 / 下载只是普通链接，点不点、下不下都由用户决定。 */
+  function cableLink(href, text) {
+    // ★ 只允许 http/https。这两个 href 是后端给的值（cable.home / cable.url），
+    //   原样赋给 a.href 的话，后端一旦给了 `javascript:` / `data:` 就是一个
+    //   "点一下执行脚本"的落点。白名单比黑名单靠谱，而且这里本来就只需要网页链接。
+    var url = String(href || '');
+    if (!/^https?:\/\//i.test(url)) return el('span', 'lnk', text);
+    var a = el('a', 'lnk', text);
+    a.href = url;
+    a.target = '_blank';
+    a.rel = 'noreferrer noopener';
+    return a;
+  }
+
+  function setText(sel, text) {
+    var n = $(sel);
+    if (n) n.textContent = text || '';
+  }
+
+  function renderCable(c) {
+    var rows = $('#cableRows'), btn = $('#btnInstallCable');
+    if (!rows) return;
+    var unknown = !c || typeof c.installed !== 'boolean';
+    var installed = !unknown && !!c.installed;
+    var bundled = !!(c && c.bundled);
+    var device = (c && c.device) || 'CABLE Output (VB-Audio Virtual Cable)';
+    var home = (c && c.home) || 'https://vb-audio.com/Cable/';
+    var url = (c && c.url) || '';
+
+    rows.innerHTML = '';
+    var ghost = !installed && !!(c && c.registered);
+    var v = el('span');
+    v.appendChild(dot(unknown ? 'warn' : (installed ? 'ok' : (ghost ? 'warn' : 'bad'))));
+    v.appendChild(el('span', null,
+      unknown ? t('cable.unknown')
+              : (installed ? t('cable.installed') : (ghost ? t('cable.ghost') : t('cable.missing')))));
+    if (installed) v.appendChild(el('span', 'sub', device));
+    rows.appendChild(srow(t('cable.row'), v));
+
+    // 已装：按钮置灰（留着比藏起来更让人明白"这步已经过了"）
+    if (btn) {
+      btn.disabled = installed;
+      btn.textContent = t('cable.btn');
+    }
+    setText('#cableHint', installed ? t('cable.inUse')
+      : (unknown ? t('cable.unknownHint') : t('cable.noSound')));
+    setText('#cableHow', installed ? ''
+      : (unknown ? t('cable.howUnknown') : (bundled ? t('cable.bundled') : t('cable.download'))));
+    setText('#cableUac', installed ? '' : t('cable.uac'));   // 点之前就把 UAC 说清楚
+    setText('#cableNext', installed ? t('cable.nextInstalled') : t('cable.next'));
+
+    // 手动下载入口：装不上 / 不想用按钮时的退路
+    var manual = $('#cableManual');
+    if (manual) {
+      manual.innerHTML = '';
+      if (!installed) {
+        manual.appendChild(el('span', null, t('cable.manualPrefix')));
+        manual.appendChild(cableLink(home, t('cable.linkHome')));
+        if (url) {
+          manual.appendChild(el('span', null, t('cable.manualOr')));
+          manual.appendChild(cableLink(url, t('cable.linkDownload')));
+        }
+      }
+    }
+  }
+
+  /* ==================== 设置页渲染 ==================== */
+  function renderScanResult(r) {
+    var list = $('#scanList');
+    var msg = $('#scanMsg');
+    list.innerHTML = '';
+    if (!r) { toast(t('toast.scanFail'), true); return; }
+    var data = Array.isArray(r.data) ? r.data : null;
+    if (!data || !data.length) {
+      list.hidden = true;
+      msg.hidden = false;
+      msg.innerHTML = '';
+      appendResultLine(msg, r.msg || t('toast.scanNone'));
+      return;
+    }
+    msg.hidden = true;
+    list.hidden = false;
+    data.forEach(function (item) {
+      var val, txt;
+      if (typeof item === 'string') { val = item; txt = item; }
+      else {
+        val = item.addr || item.address || item.mac || item.id || item.value || JSON.stringify(item);
+        txt = item.name || item.label || item.title || val;
+      }
+      var b = el('button', 'scan-item');
+      b.type = 'button';
+      b.appendChild(el('span', 'scan-name', String(txt)));
+      b.appendChild(el('span', 'scan-addr', String(val)));
+      b.addEventListener('click', function () {
+        $('#remoteAddr').value = val;
+        if (config) config.remote_addr = String(val);
+        toast(t('toast.filled', val));
+      });
+      list.appendChild(b);
+    });
+  }
+
+  function renderGenericResult(box, r) {
+    box.hidden = false;
+    box.innerHTML = '';
+    if (!r) { appendResultLine(box, t('toast.backendDown')); return; }
+    if (r.msg) appendResultLine(box, r.msg, 'result-head');
+    if (Array.isArray(r.data)) {
+      r.data.forEach(function (x) {
+        appendResultLine(box, typeof x === 'string' ? x : JSON.stringify(x));
+      });
+    } else if (r.data && typeof r.data === 'object') {
+      Object.keys(r.data).forEach(function (k) {
+        var v = r.data[k];
+        appendResultLine(box, k + ': ' + (v && typeof v === 'object' ? JSON.stringify(v) : String(v)));
+      });
+    }
+    if (!box.children.length) appendResultLine(box, t('toast.noContent'));
+  }
+
+  /* ==================== 页面切换 ==================== */
+  function renderPageTitle() {
+    $('#pageTitle').textContent = t(PAGE_TITLE_KEY[currentPage] || currentPage);
+  }
+
+  function showPage(name) {
+    currentPage = name;
+    $$('.page').forEach(function (p) { p.hidden = (p.id !== 'page-' + name); });
+    $$('#nav .nav-item').forEach(function (b) { b.classList.toggle('active', b.dataset.page === name); });
+    renderPageTitle();
+  }
+
+  /* ==================== 事件绑定 ==================== */
+  /* ==================== 预设方案（应用 × 输入法） ==================== */
+  var PROFILES = null;
+  var profChoice = { app: 'workbuddy', ime: 'qwen' };
+
+  function loadProfiles() {
+    return api('/api/profiles').then(function (r) {
+      // ★ 形状校验：apps/imes 不是数组时下面 forEach 会抛，整个预设方案就废了。
+      if (!r || !Array.isArray(r.apps) || !Array.isArray(r.imes) || !r.apps.length) {
+        return false;
+      }
+      PROFILES = r;
+      var sa = $('#profApp'), si = $('#profIme');
+      sa.innerHTML = ''; si.innerHTML = '';
+      r.apps.forEach(function (a) {
+        var o = document.createElement('option');
+        o.value = a.id; o.textContent = a.name; sa.appendChild(o);
+      });
+      r.imes.forEach(function (m) {
+        var o = document.createElement('option');
+        o.value = m.id;
+        // 选项名只留输入法名字本身，不挂任何后缀 —— 下拉框里又长又乱；
+        // 下拉框里又长又乱；这些差别下面那行备注（profNote）已经写清楚了，
+        // 而且每条都给了"为什么"和"怎么办"。
+        o.textContent = m.name;
+        si.appendChild(o);
+      });
+      // 后端配置里记着上次选的是哪套；读到就还原
+      api('/api/config').then(function (c) {
+        if (c && c.profile) {
+          if (c.profile.app) profChoice.app = c.profile.app;
+          if (c.profile.ime) profChoice.ime = c.profile.ime;
+        }
+        sa.value = profChoice.app; si.value = profChoice.ime;
+        renderProfilePreview();
+      });
+      sa.addEventListener('change', function () {
+        profChoice.app = sa.value; renderProfilePreview();
+      });
+      si.addEventListener('change', function () {
+        profChoice.ime = si.value; renderProfilePreview();
+      });
+      renderProfilePreview();
+    });
+  }
+
+  function currentProfile() {
+    if (!PROFILES) return null;
+    var app = PROFILES.apps.filter(function (a) { return a.id === profChoice.app; })[0]
+              || PROFILES.apps[0];
+    var ime = PROFILES.imes.filter(function (m) { return m.id === profChoice.ime; })[0]
+              || PROFILES.imes[0];
+    return { app: app, ime: ime };
+  }
+
+  function imeVoiceLabel(spec) {
+    if (!spec) return t('voice.keep');
+    var parts = (spec.mods || []).concat(spec.key ? [spec.key] : []);
+    return t(spec.mode === 'tap' ? 'voice.tapPrefix' : 'voice.holdPrefix', parts.join('+'));
+  }
+
+  function renderProfilePreview() {
+    var cur = currentProfile(), box = $('#profPreview'), note = $('#profNote');
+    // cur.app 可能是 undefined（/api/profiles 返回空 apps 时 currentProfile() 会回落到
+    // apps[0]）；不判就会在下面读 .keys 时抛 TypeError，把预览画一半就断在那儿。
+    if (!cur || !cur.app || !cur.ime || !box) return;
+    box.innerHTML = '';
+    var appKeys = (cur.app.keys && typeof cur.app.keys === 'object') ? cur.app.keys : {};
+    ALL_DEFS.forEach(function (d) {
+      var wrap = el('div', 'pp');
+      wrap.appendChild(el('b', null, t(d.name)));
+      if (d.id === 'voice') {
+        wrap.appendChild(el('span', null, imeVoiceLabel(cur.ime.spec)));
+      } else {
+        var m = appKeys[d.id];
+        if (!m) wrap.classList.add('unmapped');
+        wrap.appendChild(el('span', null, describe(m) || t('map.unmapped')));
+      }
+      box.appendChild(wrap);
+    });
+    note.textContent = t('keys.profileNote', cur.app.name, cur.app.note, cur.ime.name, cur.ime.note);
+  }
+
+  function applyProfile() {
+    var cur = currentProfile();
+    if (!cur) return;
+    doAction({ action: 'apply-profile', app: cur.app.id, ime: cur.ime.id },
+             $('#profResult'), t('act.applyProfile'))
+      .then(function (r) {
+        if (r && r.ok) {
+          toast(r.msg || t('toast.applied'));
+          return loadConfig();
+        }
+        if (r && !r.ok) toast(r.msg || t('toast.applyFail'), true);
+      });
+  }
+
+  /* ==================== 安装类动作 ====================
+     这两个原来是写在 bindUI 里的局部函数，现在提到外面：首页「首次准备」清单也要用
+     （点清单上的「全部安装」必须跟点横幅上那个按钮**完全同一条路径**，
+     否则两条路的进度输出、跳转行为迟早会走偏）。 */
+  // ★ 安装类动作统一走这里：**点下去就立刻切到「设置 → 诊断」并滚到那块**，
+  //   不能等接口响应回来才切 —— 而且切过去要滚到卡片，否则用户停在设置页顶部，
+  //   完全看不到下面的进度输出，就会以为"点了没反应"。
+  function gotoDiagnostics() {
+    showPage('settings');
+    setTimeout(function () {
+      var box = $('#installBox2');
+      var card = box && box.closest ? box.closest('.card') : null;
+      var target = card || box;
+      if (target && target.scrollIntoView) {
+        target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }, 80);
+  }
+
+  function installDeps(action, title) {
+    var act = action || 'install-deps';
+    var box = $('#installBox2');
+    if (box) {                       // 先占位，让"有反应"是即时的（接口回来前也不空着）
+      box.hidden = false;
+      box.innerHTML = '';
+      appendResultLine(box, t('install.starting'), 'result-head');
+    }
+    gotoDiagnostics();               // 立刻切到「设置 → 诊断」并滚过去
+    toast(t('install.started', title || t('act.installDeps')));
+    doAction({ action: act }, box, title || t('act.installDeps'))
+      .then(function (r) {
+        // ⚠ api() 把任何失败吞成 null（.catch(()=>null)），所以这里必须先判 r 存在。
+        //   原来写的是 `r.msg || …`，后端不可达时直接 TypeError，结果就是
+        //   #installBox2 永远停在"正在启动安装，稍等…"，失败提示永不出现。
+        if (!r || !r.ok) toast((r && r.msg) || t('install.startFail'), true);
+      });
+  }
+
+  // 虚拟声卡安装：设置页那张卡的按钮和首页清单的按钮共用这一条路径。
+  function installCableNow() {
+    var box = $('#cableBox');
+    if (box) {
+      box.hidden = false;
+      box.innerHTML = '';
+      appendResultLine(box, t('cable.starting'), 'result-head');
+    }
+    toast(t('install.started', t('act.installCable')));
+    doAction({ action: 'install-cable' }, box, t('act.installCable'))
+      .then(function (r) {
+        // 失败时 doAction 已经弹过后端的话术，这里只兜底「后端没给话」的情况，避免两条 toast
+        if (r && !r.ok && !r.msg) toast(t('cable.startFail'), true);
+      });
+  }
+
+  function bindUI() {
+    $$('#nav .nav-item').forEach(function (b) {
+      b.addEventListener('click', function () { showPage(b.dataset.page); });
+    });
+
+    // 状态页动作
+    $$('.hero-actions .btn').forEach(function (b) {
+      b.addEventListener('click', function () { actionStart(b.dataset.act); });
+    });
+
+    // 横幅上的按钮：按当前状态决定它到底干哪件事（装语音 / 装全部 / 装按键 / 重启 / 清残留）
+    function runBannerAction(el2) {
+      var act = el2.dataset.actb || 'install-deps';
+      if (act === 'restart-app') {
+        gotoDiagnostics();
+        doAction({ action: 'restart-app' }, $('#installBox2'), t('act.restartApp'))
+          .then(function (r) { if (r && r.ok) toast(r.msg || t('toast.restarting')); });
+        return;
+      }
+      if (act === 'clean-cable-residue') {
+        // 「清除虚拟声卡残留」：走后端清理流程（只删白名单里那几处，需要管理员 → 一次 UAC）。
+        // 清完必须**重启**再重装，所以这里把两句话都说清楚，别让用户白等。
+        var box = $('#installBox2');
+        box.hidden = false;
+        box.innerHTML = '';
+        appendResultLine(box, t('act.cleanCableResidue'), 'result-head');
+        toast(t('cable.residueStarted'));
+        doAction({ action: 'uninstall', items: ['cable_residue'] }, box,
+                 t('act.cleanCableResidue')).then(function (r) {
+          if (r && r.ok) toast(t('cable.residueHint'));
+        });
+        return;
+      }
+      installDeps(act, el2.textContent || t('act.installDeps'));
+    }
+    $('#depBannerBtn').addEventListener('click', function () { runBannerAction(this); });
+    $('#depBannerBtn2').addEventListener('click', function () { runBannerAction(this); });
+    $('#btnInstall').addEventListener('click', function () {
+      installDeps('install-deps', t('act.installBase'));
+    });
+    $('#btnInstallKeys').addEventListener('click', function () {
+      // 装之前先把话说清楚：这一项会引入注入，且要一次管理员权限
+      if (!confirm(t('act.installKeysConfirm'))) return;
+      installDeps('install-keys', t('act.installKeys'));
+    });
+    // 虚拟声卡（VB-CABLE）：走和「安装基础依赖」一样的 job + 结果区 + toast；
+    // 提权由后端去做（会弹一次 UAC，卡片里已经提前说明）。
+    $('#btnInstallCable').addEventListener('click', installCableNow);
+    $('#btnQwen').addEventListener('click', function () {
+      doAction({ action: 'qwen-inject' }, $('#voiceResult'), t('act.qwenInject'));
+    });
+    $('#btnElevate').addEventListener('click', function () {
+      doAction({ action: 'elevate' }, $('#checkBox'), t('set.elevate'));
+    });
+    $('#btnSetupElevated').addEventListener('click', function () {
+      doAction({ action: 'setup-elevated' }, $('#checkBox'), t('act.optimize'));
+    });
+    $('#btnDelNone').addEventListener('click', function () { setDelItems('none'); });
+    $('#btnDelRecommend').addEventListener('click', function () { setDelItems('rec'); });
+    $('#btnDelAll').addEventListener('click', function () { setDelItems('all'); });
+    $('#btnApplyProfile').addEventListener('click', applyProfile);
+    $('#btnRestartApp').addEventListener('click', function () {
+      doAction({ action: 'restart-app' }, $('#checkBox'), t('act.restartApp'))
+        .then(function (r) { if (r && r.ok) toast(r.msg || t('toast.restarting')); });
+    });
+    $('#btnResetBt').addEventListener('click', function () {
+      if (!confirm(t('act.resetBtConfirm'))) return;
+      doAction({ action: 'reset-bt' }, $('#checkBox'), t('act.resetBt'))
+        .then(function (r) { if (r && r.ok) toast(r.msg || t('act.resetBt')); });
+    });
+    $('#btnMicCheck').addEventListener('click', function () {
+      doAction({ action: 'mic-selfcheck' }, $('#checkBox'), t('set.micCheck'))
+        .then(function (r) { if (r && r.ok && r.msg) toast(r.msg); });
+    });
+    $('#btnKeysCheck').addEventListener('click', function () {
+      doAction({ action: 'keys-selfcheck' }, $('#checkBox'), t('set.keysCheck'))
+        .then(function (r) { if (r && r.ok && r.msg) toast(r.msg); });
+    });
+    $('#themeLight').addEventListener('change', function () {
+      var theme = $('#themeLight').checked ? 'light' : 'dark';
+      applyTheme(theme, true);
+      toast(t(theme === 'light' ? 'toast.themeLight' : 'toast.themeDark'));
+    });
+    $('#langSel').addEventListener('change', function (e) {
+      setLang(e && e.target ? e.target.value : 'zh', true);
+    });
+    $('#btnUninstall').addEventListener('click', function () {
+      var picked = delPicked();
+      if (!picked.length) { toast(t('toast.nothingPicked'), true); return; }
+      var names = DEL_ITEMS.filter(function (it) {
+        return picked.indexOf(it.id) >= 0;
+      }).map(function (it) { return '· ' + it.label; });
+      var hasAdmin = DEL_ITEMS.some(function (it) {
+        return it.admin && picked.indexOf(it.id) >= 0;
+      });
+      // 只有勾了「结束客户端进程」或「删除依赖（.venv）」才会把界面一起关掉 ——
+      // 只删 __pycache__/日志还说"客户端会退出"就是纯吓人，用户会以为卸了整个程序。
+      var kills = picked.indexOf('kill') >= 0 || picked.indexOf('venv') >= 0;
+      var msg = t('uninstall.confirmHead', picked.length) + '\n' + names.join('\n') +
+        '\n\n' + t('uninstall.confirmKeep') +
+        (hasAdmin ? '\n\n' + t('uninstall.confirmAdmin') : '') +
+        '\n\n' + (kills ? t('uninstall.confirmKills') : t('uninstall.confirmNoKill'));
+      if (!confirm(msg)) return;
+      uninstallPending = true;                 // 记着"正在清理"，用于掉线时补完成提示
+      var ub = $('#uninstallBox');
+      if (ub) {
+        ub.hidden = false;
+        ub.innerHTML = '';
+        appendResultLine(ub, t('cleanup.pendingHead', picked.length), 'result-head');
+        appendResultLine(ub, kills ? t('cleanup.pendingKills') : t('cleanup.pendingKeep'));
+      }
+      doAction({ action: 'uninstall', items: picked }, ub, t('act.cleanup'))
+        .then(function (r) {
+          if (r && r.ok) { toast(r.msg || t('toast.cleanupStarted')); showPage('log'); }
+          else {
+            uninstallPending = false;
+            if (r) toast(r.msg || t('toast.cleanupFail'), true);
+          }
+        });
+    });
+
+    // 映射面板
+    $('#mapType').addEventListener('change', syncMappingFields);
+    bindCapture($('#mapCapture'), $('#mapValue'), $('#mapCaptureHint'), function () {
+      var type = $('#mapType').value;
+      return type === 'combo' || type === 'holdcombo';
+    }, $('#mapMouse'));
+    $('#btnSaveMap').addEventListener('click', function () {
+      if (!selectedKey) return;
+      var m = currentPanelMapping();
+      if (m.type !== 'text' && m.type !== 'mouse' && !m.value) {
+        toast(t('toast.pickKey'), true);
+        return;
+      }
+      if (m.type === 'text' && !m.text) {
+        toast(t('toast.textEmptyWarn'), false);
+      }
+      if (!config) return;
+      config.keys[selectedKey] = m;
+      saveConfig();
+      renderConfigAll();
+    });
+    $('#btnClearMap').addEventListener('click', function () {
+      if (!selectedKey || !config) return;
+      if (Object.prototype.hasOwnProperty.call(config.keys, selectedKey)) {
+        delete config.keys[selectedKey];
+        saveConfig();
+      } else {
+        toast(t('toast.noSuchMap'));
+      }
+      renderConfigAll();
+    });
+
+    // 工具栏
+    $('#btnRecommended').addEventListener('click', function () {
+      if (!config) return;
+      if (!window.confirm(t('confirm.recommended'))) return;
+      var keys = {};
+      Object.keys(RECOMMENDED_KEYS).forEach(function (k) {
+        var m = RECOMMENDED_KEYS[k];
+        keys[k] = { type: m.type, value: m.value, mods: m.mods.slice(), text: m.text || '' };
+      });
+      config.keys = keys;
+      config.voice = {
+        mode: RECOMMENDED_VOICE.mode,
+        key: RECOMMENDED_VOICE.key,
+        mods: RECOMMENDED_VOICE.mods.slice()
+      };
+      saveConfig();
+      renderConfigAll();
+    });
+    $('#btnClearAll').addEventListener('click', function () {
+      if (!config) return;
+      if (!window.confirm(t('confirm.clearAll'))) return;
+      config.keys = {};
+      saveConfig();
+      renderConfigAll();
+    });
+    $('#btnExport').addEventListener('click', exportConfig);
+    $('#btnImport').addEventListener('click', function () { $('#importFile').click(); });
+    $('#importFile').addEventListener('change', function (e) {
+      var f = e.target.files && e.target.files[0];
+      if (f) importConfig(f);
+      e.target.value = '';
+    });
+    $('#locateToggle').addEventListener('change', function (e) {
+      locateMode = !!e.target.checked;
+      toast(t(locateMode ? 'toast.locateOn' : 'toast.locateOff'));
+    });
+
+    // 语音页
+    bindCapture($('#voiceCapture'), $('#voiceKey'), $('#voiceCaptureHint'), function () { return false; });
+    $('#voicePreset').addEventListener('change', function (e) {
+      var p = VOICE_PRESETS[e.target.value];
+      renderVoiceTip();
+      if (!p) return; // 自定义：不动现有值
+      $('#voiceMode').value = p.mode;
+      $('#voiceKey').value = p.key;
+      buildMods($('#voiceMods'), p.mods);
+    });
+    $('#btnSaveVoice').addEventListener('click', function () {
+      if (!config) return;
+      config.voice = {
+        mode: $('#voiceMode').value,
+        key: ($('#voiceKey').value || '').trim().toUpperCase(),
+        mods: readMods($('#voiceMods'))
+      };
+      saveConfig().then(function () { renderConfigAll(); });
+    });
+    $('#btnTestVoice').addEventListener('click', function () {
+      var box = $('#voiceResult');
+      box.hidden = false;
+      box.innerHTML = '';
+      doAction({ action: 'test-voice' }).then(function (r) { renderGenericResult(box, r); });
+    });
+
+    // 设置页
+    $('#gain').addEventListener('input', function (e) {
+      $('#gainVal').textContent = Number(e.target.value).toFixed(1) + '×';
+    });
+    $('#btnSaveSettings').addEventListener('click', function () {
+      if (!config) return;
+      config.remote_addr = ($('#remoteAddr').value || '').trim();
+      config.audio = {
+        gain: Number($('#gain').value),
+        agc: $('#agc').checked,
+        relay: $('#relay').checked
+      };
+      saveConfig().then(function () { renderConfigAll(); loadState(); });
+    });
+    $('#btnScan').addEventListener('click', function () {
+      var box = $('#scanMsg');
+      box.hidden = false;
+      box.innerHTML = '';
+      appendResultLine(box, t('toast.scanning'));
+      doAction({ action: 'scan' }).then(function (r) {
+        if (r && r.ok) renderScanResult(r);
+        else { box.innerHTML = ''; appendResultLine(box, (r && r.msg) || t('toast.scanFailShort')); }
+      });
+    });
+    $('#autostart').addEventListener('change', function (e) {
+      var on = !!e.target.checked;
+      doAction({ action: 'autostart', on: on }).then(function (r) {
+        if (!r || !r.ok) {
+          e.target.checked = !on;
+          return;
+        }
+        if (state) state.autostart = on;
+        setTimeout(loadState, 500);
+      });
+    });
+    $('#btnCheck').addEventListener('click', function () {
+      var box = $('#checkBox');
+      box.hidden = false;
+      box.innerHTML = '';
+      appendResultLine(box, t('toast.checking'));
+      doAction({ action: 'check' }).then(function (r) {
+        if (r && r.ok) renderGenericResult(box, r);
+        else { box.innerHTML = ''; appendResultLine(box, (r && r.msg) || t('toast.checkFail')); }
+      });
+    });
+
+    // 日志页
+    $('#pauseScroll').addEventListener('change', function (e) {
+      logPaused = !!e.target.checked;
+    });
+    $('#btnClearLog').addEventListener('click', function () {
+      var box = $('#logBox');
+      box.innerHTML = '';
+      box.appendChild(el('div', 'log-line log-empty', t('log.cleared')));
+    });
+
+    // 端口显示
+    $('#portVal').textContent = location.port || (location.protocol === 'https:' ? '443' : '8787');
+  }
+
+  /* ==================== 初始化 ==================== */
+  /* ==================== 主题：深浅切换 ====================
+     优先级：地址栏参数 > 本机记忆 > 默认（浅色 DeepSeek 风）。
+     ⚠ 存储键带版本号（-v2）：换过默认主题后必须换键，否则旧浏览器里存的
+       老偏好会静默盖掉新默认值 —— 表现就是"外观怎么变了、不是那版啊"。
+     这里只记"外观偏好"，跟后端配置无关 —— 配置永远以后端为准。 */
+  var THEME_KEY = 'vibe-mote-theme-v2';
+  var THEME = 'light';
+
+  function currentTheme() {
+    var m = /[?&]theme=([a-z]+)/i.exec(location.search);
+    if (m) return m[1].toLowerCase() === 'dark' ? 'dark' : 'light';
+    try {
+      var s = localStorage.getItem(THEME_KEY);
+      if (s === 'light' || s === 'dark') return s;
+    } catch (e) { /* 隐私模式下读不到，忽略 */ }
+    return 'light';
+  }
+
+  // 只重画"当前：浅色/深色"那行（换语言时也要跟着变）
+  function renderThemeNow() {
+    var now = $('#themeNow');
+    if (now) now.textContent = t(THEME === 'light' ? 'set.themeNowLight' : 'set.themeNowDark');
+  }
+
+  function applyTheme(theme, remember) {
+    THEME = (theme === 'dark') ? 'dark' : 'light';
+    if (THEME === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
+    else document.documentElement.removeAttribute('data-theme');
+    var box = $('#themeLight');
+    if (box) box.checked = (THEME === 'light');
+    renderThemeNow();
+    if (remember) {
+      try { localStorage.setItem(THEME_KEY, THEME); } catch (e) { /* 忽略 */ }
+    }
+  }
+
+  /* ==================== 清理清单（逐项勾选，默认全不勾） ==================== */
+  var DEL_ITEMS = [];
+
+  // 清单文案来自后端（label / desc）；这里只负责"在不在 / 多大"这截尾巴 + 语言切换后重画
+  function renderDelItems() {
+    var box = $('#delItems');
+    if (!box) return;
+    box.innerHTML = '';
+    if (!DEL_ITEMS.length) {
+      box.appendChild(el('div', 'hint', t('cleanup.loading')));
+      return;
+    }
+    // ★ 重画之前先把当前勾选记下来：切语言会走 applyLang() → renderDelItems()，
+    //   不保留的话用户勾好的项会被**静默清空**（按钮退回"未勾选"，他得重新勾一遍）。
+    var wasChecked = {};
+    DEL_ITEMS.forEach(function (it) {
+      var old = document.getElementById('del_' + it.id);
+      if (old && old.checked) wasChecked[it.id] = true;
+    });
+    DEL_ITEMS.forEach(function (it) {
+      var lab = el('label', 'del-item');
+      var cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.id = 'del_' + it.id;
+      cb.checked = !!wasChecked[it.id];      // ← 默认不勾：没勾 = 不删；重画时保留已勾
+      lab.appendChild(cb);
+      // 名字后面缀上"现在在不在、多大"：不让用户对着一堆不存在的东西瞎勾。
+      // 离线包上最容易误会 ——「删除依赖（.venv）」永远不存在，
+      // 真正占地方的是 154MB 的 runtime。
+      var pres = it.present || {};
+      var tail = '';
+      if (pres.exists === false) tail = t('cleanup.gone');
+      else if (typeof pres.size_mb === 'number') tail = t('cleanup.size', pres.size_mb);
+      var name = el('span', 'del-name', it.label + (it.admin ? '  🔒' : ''));
+      if (tail) {
+        var sz = el('span', 'del-size', tail);
+        name.appendChild(sz);
+      }
+      lab.appendChild(name);
+      lab.appendChild(el('span', 'del-desc', it.desc));
+      box.appendChild(lab);
+    });
+    updateDelBtn();                          // 勾选被保留 → 按钮文案要跟着对
+  }
+
+  function loadDelItems() {
+    return api('/api/uninstall-items').then(function (r) {
+      // ★ 必须校验类型：r.items 不是数组时（后端换形状 / 桩数据）下面 forEach 会抛，
+      //   整个清理清单就空着不动了。
+      if (!r || !Array.isArray(r.items)) return false;
+      DEL_ITEMS = r.items;
+      renderDelItems();
+      var box = $('#delItems');
+      if (box && !box._delBound) {           // 只绑一次（重试时别再叠一层监听）
+        box.addEventListener('change', updateDelBtn);
+        box._delBound = true;
+      }
+      updateDelBtn();
+      return true;
+    });
+  }
+
+  function delPicked() {
+    return DEL_ITEMS.filter(function (it) {
+      var cb = document.getElementById('del_' + it.id);
+      return cb && cb.checked;
+    }).map(function (it) { return it.id; });
+  }
+
+  function updateDelBtn() {
+    var n = delPicked().length;
+    var b = $('#btnUninstall');
+    if (!b) return;
+    b.disabled = (n === 0);
+    b.textContent = n ? t('cleanup.startN', n) : t('cleanup.start0');
+  }
+
+  function setDelItems(which) {
+    DEL_ITEMS.forEach(function (it) {
+      var cb = document.getElementById('del_' + it.id);
+      if (!cb) return;
+      if (which === 'all') cb.checked = true;
+      else if (which === 'none') cb.checked = false;
+      else cb.checked = !!it.recommend;
+    });
+    updateDelBtn();
+  }
+
+  function init() {
+    // 语言：手动记过就用记的，否则按浏览器语言；检测不出来一律中文
+    LANG = currentLang();
+    applyTheme(currentTheme(), false);
+    applyLang();                 // 回填静态文案 + 重画依赖语言的部分
+    notifyLang(LANG);            // 同时告诉后端（它据此换自己发的消息）
+    buildPad();
+    bindUI();
+    loadConfig().then(function () { loadState(); });
+    loadProfiles();
+    loadDelItems();
+    connectSSE();
+    // ★ state 每 5 秒自动重试，但「配置 / 预设方案 / 清理清单」原来只在启动时拉一次 ——
+    //   如果打开页面的那一刻客户端还没起来（或者刚被"重启整个客户端/一键优化"停掉），
+    //   这三块就会**永远**停在空 / "正在读取…"（保存按钮也只会一直提示"尚未读取到配置"）。
+    //   这里让它们跟着轮询一起补拉，各自成功一次就不再重复拉。
+    setInterval(function () {
+      if (!configLoaded) loadConfig();
+      if (!PROFILES) loadProfiles();
+      if (!DEL_ITEMS.length) loadDelItems();
+    }, 5000);
+    setInterval(loadState, 5000);
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+  else init();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,11 @@
+# VibeMote —— 基础依赖（语音键 + 遥控器麦克风）
+#
+# 只需要这三个，**不需要 numpy**：音频处理（IMA ADPCM 解码 + 重采样）是纯 Python 写的。
+# 版本是实测通过的组合（Python 3.13 / Windows 11）。
+#
+# 装不上/太慢就换源（实测顺序，详见 AGENTS.md）：
+#   pip install -r requirements.txt -i https://mirrors.cloud.tencent.com/pypi/simple
+#
+bleak==3.0.2          # 蓝牙 GATT：语音键状态通道(ab5e0004) + 遥控器麦克风音频(ab5e0003)
+sounddevice==0.5.6    # 音频输入输出（PortAudio 绑定）：把遥控器麦克风送进虚拟声卡
+cffi>=1.16            # sounddevice 的依赖，一般自动带上；实测 2.1.1
