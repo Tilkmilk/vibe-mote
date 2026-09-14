@@ -1,0 +1,40 @@
+# 运行时生成、或跟本机绑定的东西 —— 不要提交
+.venv/
+config.json
+# 写 config.json 时的临时文件。⚠ 必须显式写上：它**带着用户完整的配置**
+# （蓝牙地址 + 整套键位），实测真的在程序目录里被留下过，而原来没被忽略，
+# `git status` 会把它当新文件（手一抖就提交上去了）。
+config.json.*.tmp
+*.tmp
+python.txt
+__pycache__/
+*.pyc
+*.log
+_uninstall_result.json
+qwen_optout
+cable_autotried
+_ready.txt
+_task.xml
+
+# 离线 wheel 包（自己按需下载，别塞进仓库）
+wheels/
+
+# 离线全量包的产物（内置 Python 运行时，解压后 ~200MB，绝对不能进仓库）
+runtime/
+../vibe-mote-offline-v1.zip
+../vibe-mote-offline-voice-v1.zip
+_offline_build/
+
+# 打包产物
+../vibe-mote-v1.zip
+
+# 开发/测试脚本、临时文件（本地保留，不进公开仓库）
+# 用通配 `_*` 而不是逐个后缀：临时产物什么形式都有（脚本、目录、json、txt…），
+# 挨个列后缀迟早漏一个 —— 仓库里没有任何以 `_` 开头的正经文件，所以这条是安全的。
+_*
+
+# 本地开发笔记（不进公开仓库）
+DEVELOPMENT-NOTES.md
+
+# VB-CABLE 安装器：第三方二进制，不随仓库分发（用户自行从 vb-audio.com 下载）
+vbcable/

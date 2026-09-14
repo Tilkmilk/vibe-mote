@@ -1,0 +1,14 @@
+# VibeMote —— 按键映射依赖（**可选**）
+#
+# 不装这个也能用：语音键走 ATVV 通道，跟 frida 无关。
+# 装它才能把方向键 / OK / 音量键这些映射成键盘鼠标。
+#
+# 为什么是 frida：遥控器的 HID 报告被 Windows 的 UMDF 蓝牙驱动（WUDFHost.exe）
+# 消费掉了 —— Raw Input 和直接读 HID 设备都收不到。只能注入 WUDFHost，
+# 挂钩 ntdll!NtDeviceIoControlFile 的 IOCTL 0x80018483，抄它的输出缓冲区。
+#
+# ⚠ 体积：_frida.pyd 一个文件就 127MB，且不可裁剪 —— 这是它唯一的缺点。
+# ⚠ 首次挂载会弹一次 UAC（frida 给自己装助手进程）；本项目的「一键优化」
+#   可以把自启改成最高权限计划任务，之后就不会再弹。
+#
+frida>=17.18,<18      # 实测 17.18.0

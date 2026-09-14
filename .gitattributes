@@ -1,0 +1,17 @@
+# 换行符规则 —— 这个项目对启动脚本的换行有硬要求，必须显式钉住。
+#
+# 为什么：`启动遥控器.vbs` 由 wscript 解析，要求 **纯 ASCII + CRLF**。
+# 如果谁在 Linux/macOS 上 clone 或从 GitHub 下 zip，拿到 LF 版本，
+# 轻则报「未结束的字符串常量」，重则双击毫无反应（见 AGENTS.md 第 8 节）。
+#
+# text=auto：其余文件按文本处理，仓库内存 LF、检出时按平台。
+* text=auto
+
+# 启动脚本强制 CRLF（跟平台无关）
+启动遥控器.vbs text eol=crlf
+
+# 二进制，别动
+*.png binary
+*.ico binary
+*.zip binary
+*.whl binary
