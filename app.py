@@ -2807,18 +2807,22 @@ class Handler(BaseHTTPRequestHandler):
                 threading.Thread(target=follow_elevate_log, daemon=True).start()
             return self._json({"ok": ok, "msg": msg})
         if act == "restart-app":
-            # 「重启自己」：用**启动器那套优先级**挑解释器（优先 .venv），
-            # 拉起同样权限的新实例（--takeover 会结束旧的我），然后退出。
+            # 「重启自己」：用**启动器那套优先级**挑解释器，并以**同样的权限**拉起新实例。
+            #
+            # ★ 不能再用 `app.py --takeover`：提权实例里点重启时，新进程是旧进程的
+            #   子进程，新进程再去 taskkill 旧进程会把两个一起带走（真机实测：
+            #   日志停在"接管模式：结束 1 个旧实例"，界面再也打不开）。
+            #   改为交给 restart_handoff.py —— 它等端口释放后再正常启动，互不相杀。
             import ctypes
             exe = best_pythonw()
-            params = f'"{os.path.join(HERE, "app.py")}" --silent --takeover'
+            handoff = os.path.join(HERE, "restart_handoff.py")
+            if os.path.exists(handoff):
+                params = f'"{handoff}"'
+            else:
+                params = f'"{os.path.join(HERE, "app.py")}" --silent'
             try:
-                if is_elevated():
-                    rc = ctypes.windll.shell32.ShellExecuteW(None, "open", exe,
-                                                             params, HERE, 0)
-                else:
-                    rc = ctypes.windll.shell32.ShellExecuteW(None, "open", exe,
-                                                             params, HERE, 0)
+                rc = ctypes.windll.shell32.ShellExecuteW(None, "open", exe,
+                                                         params, HERE, 0)
             except Exception as e:
                 return self._json({"ok": False, "msg": i18n.L(
                     f"重启失败：{e!r}", f"Restart failed: {e!r}")})
