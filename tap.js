@@ -90,6 +90,13 @@ if (target === null) {
       this.cap = false;
       const n = this.outLen;
       lens[n] = (lens[n] || 0) + 1;
+      /* 诊断：把每种长度下的原始字节各留一条样例。
+       * 真机上遇到过 report descriptor 说 3 字节、实际缓冲区只有 2 字节的变体，
+       * 只看长度分布无法判断这些字节该怎么解 —— 把样本身份（长度 + 内容）报给
+       * Python，一眼就能确定是 report id 协议还是裸 usage。 */
+      if (n > 0 && n <= 8 && !this.out.isNull() && Object.keys(weird).length < 8) {
+        try { weird[n + ":" + toHex(this.out, n)] = 1; } catch (e) { /* 读不到就算了 */ }
+      }
       // 3 字节且首字节是 0x02 的，把它的 usage 记进"见过哪些键"（含没被映射的）
       if (n === 3 && !this.out.isNull()) {
         try {
@@ -102,11 +109,13 @@ if (target === null) {
           }
         } catch (e) { /* 读不到就算了 */ }
       }
-      // 只认 3 字节 + 成功返回；其它长度是同一宿主里别的蓝牙键鼠
-      if (retval.toUInt32() !== 0 || this.outLen !== 3 || this.out.isNull()) return;
+      // 只认 1~8 字节 + 成功返回；9 字节是同一宿主里别的蓝牙键盘。
+      // 原来写死 3 字节，遇到"报告缓冲只有 2 字节"的变体会把每一条都拒掉
+      // （真机实测：1 字节通知 → Windows 补上 report id 后缓冲 2 字节）。
+      if (retval.toUInt32() !== 0 || this.outLen < 1 || this.outLen > 8 || this.out.isNull()) return;
       let raw;
       try {
-        raw = toHex(this.out, 3);
+        raw = toHex(this.out, this.outLen);
       } catch (e) {
         return;
       }
