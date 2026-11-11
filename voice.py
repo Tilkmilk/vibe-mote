@@ -1343,8 +1343,16 @@ class VoiceRole(threading.Thread):
         await client.start_notify(status, on_status)
         if ctl:
             try:
-                await client.write_gatt_char(ctl, bytes([0x0A, 0x00, 0x04, 0x00, 0x01]),
+                # ATVV GET_CAPS。原来这里发的是 0A 00 04 00 01，遥控器虽然照样
+                # 回了 CAPS_RESP，但不把这条连接当作 PTT/HTT 会话 —— 表现就是
+                # "按住语音键，状态特征上一条通知都没有"（既没有 0x08，也没有
+                # AUDIO_START，日志干干净净）。
+                # 换成 6 字节帧 0A 01 00 00 03 03，末字节 0x03 = PTT/HTT 交互位。
+                # 真机（Chromecast 遥控器 18d1:9450 rev 0110）实测：按住语音键
+                # 立刻出现"▼ 开始 / ▲ 结束 本段 N 帧"，16000Hz IMA ADPCM 正常流入。
+                await client.write_gatt_char(ctl, bytes([0x0A, 0x01, 0x00, 0x00, 0x03, 0x03]),
                                              response=False)
+                self._log("语音：已发 GET_CAPS（v1.0 + PTT/HTT）")
             except Exception as e:
                 self._log(f"语音：GET_CAPS 发送失败（不影响收流）: {e}")
 
@@ -1403,6 +1411,10 @@ class VoiceRole(threading.Thread):
                 self._log("语音：⚠ 音频帧太少 —— 遥控器没在送音频（多半没真正进录音态）")
             elif self.sink is None:
                 self._log("语音：⚠ 音频出口还没就绪，这段没送出去（看护任务正在重试）")
+        elif b[0] == 0x08:
+            # MICROPHONE_SEARCH：遥控器物理按下语音键的信号（PTT 会话才有）。
+            # 这一帧以前会被当成"未识别"丢掉，于是"按了没反应、日志也没有"。
+            self._log(f"语音：★ 设备上报语音键（08 {b.hex()}）—— PTT 位生效了")
         elif b[0] not in (0x00,):
             # 既不是"开始说话"(0x04) 也不是"结束"(0x00)：把原始字节打出来。
             # 遥控器换过固件/重新配对之后，通知里的操作码**有可能不一样** ——
