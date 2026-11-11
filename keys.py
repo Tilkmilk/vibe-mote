@@ -32,6 +32,27 @@ import i18n
 HERE = os.path.dirname(os.path.abspath(__file__))
 TAP_JS = os.path.join(HERE, "tap.js")
 
+# 原始报文旁路日志：把钩子看到的**每一条**报文按时间顺序写盘（不去重、不判长度）。
+# 为什么需要：不同遥控器变体的 report id / 长度都不一样，靠"界面上看到哪个键动了"
+# 认不出字节含义；有了带时间戳的全量流水，按"某键按了 N 下 → 某字节出现 N 次"
+# 就能反推出映射，和按键顺序、快慢都无关。
+RAW_LOG = os.path.join(HERE, "keys-raw.log")
+_raw_fh = None
+_raw_lines = 0
+
+
+def _raw_dump(raw: str) -> None:
+    global _raw_fh, _raw_lines
+    try:
+        if _raw_fh is None:
+            if os.path.exists(RAW_LOG) and os.path.getsize(RAW_LOG) > 1 << 20:
+                os.replace(RAW_LOG, RAW_LOG + ".1")       # 超过 1MB 就滚动，别无限长
+            _raw_fh = open(RAW_LOG, "a", buffering=1, encoding="utf-8", errors="replace")
+        _raw_fh.write(f"{time.strftime('%H:%M:%S')} {raw}\n")
+        _raw_lines += 1
+    except Exception:
+        pass
+
 # ============================================================ 常量表
 # 键名 -> 虚拟键码。界面里能选到的名字就是这张表的键。
 VK = {
@@ -107,6 +128,28 @@ USAGE_TO_KEY = {
     0x0077: "youtube", 0x0078: "netflix",
 }
 KEY_TO_USAGE = {v: k for k, v in USAGE_TO_KEY.items()}
+
+# 8 位键码（report id 0x01 + 单字节）。真机实测：部分 Chromecast 遥控器变体
+# （VID 18D1 / PID 9450 REV 0110，2023 批次）按键走的是这条 1 字节通知，
+# Windows 补上 report id 后缓冲区是 2 字节，而不是标准的 `02 lo hi`。
+# 这些码**不是 Consumer 标准 usage**，是设备自用的一张表，只能实测确定：
+# 用「某个键按 N 下 → 某个码出现 N 次」的办法标定，与按键顺序无关。
+RAW8_TO_KEY = {
+    0x01: "power",
+    0x03: "up",
+    0x04: "down",
+    0x05: "left",
+    0x06: "right",
+    0x07: "ok",
+    0x08: "mute",       # 疑似（只在早期零散按键里出现过 3 次，未做计数标定）
+    0x0A: "home",
+    0x0B: "back",
+    0x0C: "volup",
+    0x0D: "voldown",
+    0x0E: "youtube",
+    0x0F: "netflix",
+    0x11: "input",
+}
 
 # ============================================================ SendInput
 KEYEVENTF_KEYUP = 0x0002
@@ -512,6 +555,7 @@ class KeyTap(threading.Thread):
         self._av_hinted = False
         self.reports = 0
         self._held = set()          # 当前按住的 usage（过滤长按连发）
+        self._held8 = set()         # 同上，但用于 8 位键码（0x01 报告），两者不能混用
         self._script = None
         self._session = None
         self._lock = threading.Lock()
@@ -716,6 +760,10 @@ class KeyTap(threading.Thread):
         hb = self._hb or {}
         lens = hb.get("lens") or {}
         dist = "、".join(f"{k} 字节×{v}" for k, v in sorted(lens.items())) or "无"
+        samples = hb.get("weird") or {}
+        if samples:
+            # 长度 ≠ 3 的原始字节样例：判断这支遥控器到底是 report id 协议还是裸 usage
+            dist += "；样例 " + " / ".join(list(samples)[:8])
         sent = int(hb.get("sent") or 0)
         ioctl = int(hb.get("ioctl") or 0)
         host_n = len(wudfhost_pids())
@@ -798,6 +846,7 @@ class KeyTap(threading.Thread):
 
     def _on_report(self, raw):
         """raw 形如 '02 42 00'。"""
+        _raw_dump(raw)
         self.last_seen = time.time()
         if self.on_activity:
             try:
@@ -805,8 +854,22 @@ class KeyTap(threading.Thread):
             except Exception:
                 pass
         parts = raw.split()
+        if len(parts) == 2 and parts[0] == "01":
+            # report id 0x01 + 单字节键码：本变体的主按键通道（见 RAW8_TO_KEY）。
+            # 限定首字节是 0x01 —— 别的 report id 带来的 2 字节报文不按这张表解。
+            self._on_report8(parts)
+            return
         if len(parts) != 3:
-            return                      # 遥控器固定 3 字节；9 字节是别的键鼠
+            # 非 3 字节报文：不猜语义，只把原始字节记下来（去重 + 限量），
+            # 用来确定这支遥控器实际发的是什么。有些变体是「1 字节通知 +
+            # Windows 补 report id 后 2 字节缓冲」，语义得靠实测确定。
+            seen = getattr(self, "_odd_raw", None)
+            if seen is None:
+                seen = self._odd_raw = {}
+            if raw not in seen and len(seen) < 24:
+                seen[raw] = time.time()
+                self._log(f"按键映射：非 3 字节报文 {raw}（{len(parts)} 字节）")
+            return
         try:
             b = [int(x, 16) for x in parts]
         except ValueError:
@@ -835,6 +898,52 @@ class KeyTap(threading.Thread):
     def _release(self, usage):
         self._held.discard(usage)
         kid = USAGE_TO_KEY.get(usage)
+        if not kid:
+            return
+        self._emit("key", {"id": kid, "down": False})
+        m = self.mapping.get(kid)
+        if m:
+            try:
+                self.player.up(m)
+            except Exception:
+                pass
+
+    def _on_report8(self, parts):
+        """2 字节报文：parts = ['01', '0B']（report id + 8 位键码，松开时键码为 00）。"""
+        try:
+            code = int(parts[1], 16)
+        except (IndexError, ValueError):
+            return
+        self.reports += 1
+        if code == 0:                       # 全松开
+            for c in list(self._held8):
+                self._release8(c)
+            return
+        if code in self._held8:
+            return                          # 长按连发只认第一下
+        self._held8.add(code)
+        kid = RAW8_TO_KEY.get(code)
+        if not kid:
+            # 没标定过的码：记一次就够了（标定新遥控器时靠这一行认人）
+            seen = getattr(self, "_odd_raw", None)
+            if seen is None:
+                seen = self._odd_raw = {}
+            tag = f"8bit {code:02X}"
+            if tag not in seen:
+                seen[tag] = time.time()
+                self._log(f"按键映射：未标定的 8 位键码 {code:02X}")
+            return
+        self._emit("key", {"id": kid, "down": True})
+        m = self.mapping.get(kid)
+        if m:
+            try:
+                self.player.down(m)
+            except Exception as e:
+                self._log(f"按键映射：执行 {kid} 失败 {type(e).__name__}: {e}")
+
+    def _release8(self, code):
+        self._held8.discard(code)
+        kid = RAW8_TO_KEY.get(code)
         if not kid:
             return
         self._emit("key", {"id": kid, "down": False})
