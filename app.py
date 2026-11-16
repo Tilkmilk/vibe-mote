@@ -290,6 +290,12 @@ def save_config(cfg):
     clean["voice"] = {"mode": "tap" if v.get("mode") == "tap" else "hold",
                       "key": str(v.get("key") or "RALT"),
                       "mods": [str(x).upper() for x in (v.get("mods") or [])]}
+    # 自愈类开关是"高级选项"，界面里没有编辑器 —— 保存时要原样带过去，
+    # 否则用户手写进 config.json 的 auto_heal=false 会被下一次「保存」冲掉，
+    # 表现为"关掉了却还在自动重启"。
+    for _flag in ("auto_unstick", "auto_heal"):
+        if _flag in v:
+            clean["voice"][_flag] = bool(v[_flag])
     a = cfg.get("audio") or {}
     clean["audio"] = {"gain": float(a.get("gain", 4.0)),
                       "agc": bool(a.get("agc", True)),
@@ -1194,6 +1200,109 @@ def relaunch_elevated():
                         "prompt, then refresh this page in about 5 seconds")
 
 
+_RESTART_LOCK = threading.Lock()
+_RESTARTING = False
+
+
+def _wait_process_exit(pid, timeout=30.0):
+    """只读地等某个进程退出（拿 SYNCHRONIZE 句柄，不杀它）。
+
+    进程已经不在了 / 打不开句柄 → 直接返回（那就没必要等）。
+    """
+    try:
+        import ctypes
+        k32 = ctypes.windll.kernel32
+        h = k32.OpenProcess(0x00100000, False, int(pid))     # SYNCHRONIZE
+        if not h:
+            return
+        try:
+            k32.WaitForSingleObject(h, int(max(0.0, timeout) * 1000))
+        finally:
+            k32.CloseHandle(h)
+    except Exception:
+        time.sleep(2.0)                  # 极端情况下退化成短等待，别卡死监督进程
+
+
+def supervise_restart(old_pid):
+    """重启监督进程：等旧进程彻底退出 → 用启动器正常拉起一份新客户端。
+
+    ⚠ 为什么不沿用 `--takeover` 自己杀旧实例（真机复现过）：
+      · 两个进程同时"接管"时会**互相 taskkill** —— 新实例刚结束旧的，自己也没了，
+        最后一份都不剩；
+      · takeover 靠读命令行认人，跨权限读不到时会误判"端口被别的程序占着"而拒绝启动。
+    这里先等旧进程退出、再走用户熟悉的启动器：不杀任何人、不抢锁、不读别人的命令行。
+    就算这一瞬间开机自检也拉起了一份，也只会有**一份**活下来（另一份看到端口被占就自己退出）。
+    """
+    try:
+        if old_pid and int(old_pid) > 0 and int(old_pid) != os.getpid():
+            _wait_process_exit(int(old_pid), 30.0)
+    except Exception:
+        pass
+    # 旧进程已经没了：端口和单实例锁都已释放。交给启动器（它还会确认真的起来了）。
+    wscript = os.path.join(os.environ.get("SystemRoot", r"C:\Windows"),
+                           "System32", "wscript.exe")
+    try:
+        subprocess.Popen([wscript, AUTOSTART_VBS, "--silent"],
+                         cwd=HERE, stdin=subprocess.DEVNULL,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                         creationflags=0x00000008 | 0x00000200,   # DETACHED | NEW_GROUP
+                         close_fds=True)
+    except Exception as e:
+        try:
+            BUS.log(i18n.L(f"重启失败：拉起启动器出错（{type(e).__name__}: {e}）",
+                           f"Restart failed: could not run the launcher "
+                           f"({type(e).__name__}: {e})"))
+        except Exception:
+            pass
+        return 1
+    return 0
+
+
+def restart_client(reason="manual"):
+    """进程级重启：拉一个监督进程，等自己退出后由启动器重新拉起客户端。
+
+    「重启」按钮和语音会话自愈（voice.VoiceRole.on_auto_heal）共用这一条路径：
+      · 解释器按启动器那套优先级挑（优先 .venv 的 pythonw，见 best_pythonw），
+        否则会出现"用系统 Python 拉起一个没装依赖的自己"的死循环；
+      · 监督进程是自己的子进程 → **继承当前权限**：管理员实例重启后还是管理员，
+        不会平白弹出 UAC；
+      · 防重入：自愈和用户点「重启」撞在一起时只放行一次，别拉起两个监督进程。
+    返回 (ok, msg)；ok=True 时本进程会很快 os._exit(0)。
+    """
+    global _RESTARTING
+    with _RESTART_LOCK:
+        if _RESTARTING:
+            return False, i18n.L("已经在重启了", "Already restarting")
+        exe = best_pythonw()
+        cmd = [exe, os.path.join(HERE, "app.py"), "--supervise", str(os.getpid())]
+        try:
+            subprocess.Popen(cmd, cwd=HERE, stdin=subprocess.DEVNULL,
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                             creationflags=0x00000008 | 0x00000200,   # DETACHED | NEW_GROUP
+                             close_fds=True)
+        except Exception as e:
+            return False, i18n.L(f"重启失败：{e!r}", f"Restart failed: {e!r}")
+        _RESTARTING = True
+    if reason == "auto-heal":
+        BUS.log(i18n.L("语音：正在自动重启客户端（会话自愈）…",
+                       "Voice: auto-restarting the client (session self-heal)…"))
+    else:
+        BUS.log(i18n.L(
+            f"正在重启客户端（用 {os.path.basename(exe)} 拉起新实例）…",
+            f"Restarting the client (launching a new instance with "
+            f"{os.path.basename(exe)})…"))
+    # 主动重启是**正常退出**：删掉运行标记，否则下次启动会吓人地报"上次没正常退出"
+    # （os._exit 不会走 main 末尾的清理段）。
+    try:
+        os.remove(RUNSTATE)
+    except OSError:
+        pass
+    threading.Thread(target=lambda: (time.sleep(1.0), os._exit(0)),
+                     daemon=True).start()
+    return True, i18n.L("正在重启，约 5 秒后刷新本页面",
+                        "Restarting — refresh this page in about 5 seconds")
+
+
 def qwen_flag_state():
     """千问输入法是否已允许「程序注入的按键」。它默认会丢弃注入按键。"""
     try:
@@ -1722,7 +1831,10 @@ class Roles:
                 self.voice = voice_mod.VoiceRole(
                     self._on_event, addr=self.cfg.get("remote_addr"),
                     audio=self.cfg.get("audio"), voice_spec=self.cfg.get("voice"),
-                    relay=bool((self.cfg.get("audio") or {}).get("relay", True)))
+                    relay=bool((self.cfg.get("audio") or {}).get("relay", True)),
+                    # 语音会话坏了（连得上但没有 ATVV）→ 自动重启整个客户端。
+                    # 同一进程里重连治不好，只有新进程能重新协商出完整服务表。
+                    on_auto_heal=lambda: restart_client("auto-heal"))
                 self.voice.start()
             if self.keytap is None and importlib.util.find_spec("frida") is not None:
                 import keys as keys_mod
@@ -2561,6 +2673,12 @@ class Handler(BaseHTTPRequestHandler):
             merged = load_config()
             merged["keys"] = keys
             if voice:
+                # 预设只给 mode/key/mods —— 自愈开关不是预设的一部分，得留着
+                voice = dict(voice)
+                _old_v = merged.get("voice") or {}
+                for _flag in ("auto_unstick", "auto_heal"):
+                    if _flag in _old_v:
+                        voice[_flag] = _old_v[_flag]
                 merged["voice"] = voice
             merged["profile"] = {"app": app_id, "ime": ime_id}
             clean = save_config(merged)
@@ -2807,34 +2925,10 @@ class Handler(BaseHTTPRequestHandler):
                 threading.Thread(target=follow_elevate_log, daemon=True).start()
             return self._json({"ok": ok, "msg": msg})
         if act == "restart-app":
-            # 「重启自己」：用**启动器那套优先级**挑解释器（优先 .venv），
-            # 拉起同样权限的新实例（--takeover 会结束旧的我），然后退出。
-            import ctypes
-            exe = best_pythonw()
-            params = f'"{os.path.join(HERE, "app.py")}" --silent --takeover'
-            try:
-                if is_elevated():
-                    rc = ctypes.windll.shell32.ShellExecuteW(None, "open", exe,
-                                                             params, HERE, 0)
-                else:
-                    rc = ctypes.windll.shell32.ShellExecuteW(None, "open", exe,
-                                                             params, HERE, 0)
-            except Exception as e:
-                return self._json({"ok": False, "msg": i18n.L(
-                    f"重启失败：{e!r}", f"Restart failed: {e!r}")})
-            if rc <= 32:
-                return self._json({"ok": False, "msg": i18n.L(
-                    f"重启失败（返回码 {rc}）",
-                    f"Restart failed (return code {rc})")})
-            BUS.log(i18n.L(
-                f"正在重启客户端（用 {os.path.basename(exe)} 拉起新实例）…",
-                f"Restarting the client (launching a new instance with "
-                f"{os.path.basename(exe)})…"))
-            threading.Thread(target=lambda: (time.sleep(2.5), os._exit(0)),
-                             daemon=True).start()
-            return self._json({"ok": True, "msg": i18n.L(
-                "正在重启，约 5 秒后刷新本页面",
-                "Restarting — refresh this page in about 5 seconds")})
+            # 「重启自己」：拉起同样权限的新实例（--takeover 会结束旧的我），然后退出。
+            # 具体逻辑在模块级 restart_client() 里 —— 语音会话自愈也走同一条路。
+            ok, msg = restart_client("manual")
+            return self._json({"ok": ok, "msg": msg})
         if act == "elevate":
             if is_elevated():
                 return self._json({"ok": True, "msg": i18n.L(
@@ -3011,6 +3105,10 @@ def main():
                     help="只检查本目录模块能否 import（构建离线包时用），不启动任何东西")
     ap.add_argument("--takeover", action="store_true",
                     help="接管正在运行的实例（管理员重启时用）")
+    # --supervise PID：重启监督进程（见 supervise_restart）。它自己不起界面，
+    # 只等 PID 退出，然后用启动器拉起一份干净的客户端。
+    ap.add_argument("--supervise", type=int, default=0, metavar="PID",
+                    help="内部用：等 PID 退出后重新拉起客户端（重启监督进程）")
     # --boot：这一份是**开机自启**拉起来的（不是用户双击启动器）。
     # 它专门用来关掉"自动弹 UAC 装虚拟声卡"那条路 —— 开机时用户不在电脑前，
     # 弹了也没人点，还会变成每次开机都弹一次（用户完全不知道是谁要权限）。
@@ -3020,6 +3118,8 @@ def main():
 
     if args.selftest:
         return _selftest()
+    if args.supervise:
+        return supervise_restart(args.supervise)
 
     global ROLES
     cfg = load_config()
