@@ -2647,7 +2647,14 @@ class Handler(BaseHTTPRequestHandler):
             if "keys" in body:
                 merged["keys"] = body["keys"] if isinstance(body["keys"], dict) else {}
             if "voice" in body and isinstance(body["voice"], dict):
-                merged["voice"] = body["voice"]
+                # 界面只提交 mode/key/mods —— 自愈开关不是界面字段，要保留原来的值，
+                # 否则用户手写的 auto_heal=false 一点「保存」就没了。
+                old_v = merged.get("voice") or {}
+                new_v = dict(body["voice"])
+                for _flag in ("auto_unstick", "auto_heal"):
+                    if _flag in old_v and _flag not in new_v:
+                        new_v[_flag] = old_v[_flag]
+                merged["voice"] = new_v
             if "audio" in body and isinstance(body["audio"], dict):
                 merged["audio"] = body["audio"]
             if "remote_addr" in body:
