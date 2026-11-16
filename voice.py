@@ -954,6 +954,9 @@ class VoiceRole(threading.Thread):
                              f"Voice: auto-restart failed ({type(e).__name__}: {e}) — "
                              f"please click Restart."))
             return False
+        # 进程马上要退出：在退出前那零点几秒里如果不小心又失败一次，别喊
+        # "请点「重启」"（会让人以为自愈没生效）。真机日志里 23:14:48 就多出一条。
+        self._heal_pending = True
         return True
 
     def set_addr(self, addr):
@@ -1344,7 +1347,8 @@ class VoiceRole(threading.Thread):
             self._log(f"语音：缺少 ATVV 特征（本次枚举到 {len(uuids)} 个服务："
                       f"{', '.join(uuids) or '空'}）")
             healed = self.misses >= 3 and self._maybe_auto_heal(len(uuids))
-            if self.misses >= 3 and not healed:
+            if (self.misses >= 3 and not healed
+                    and not getattr(self, "_heal_pending", False)):
                 if self._ever_ok:
                     self._log("语音：连续 3 次看不到 ATVV —— 这个进程里的蓝牙会话已经"
                               "乱了。请点「重启」重新拉起客户端（重连治不好）。")
