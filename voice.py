@@ -1339,25 +1339,30 @@ class VoiceRole(threading.Thread):
             self.misses += 1
             self._log(f"语音：缺少 ATVV 特征（本次枚举到 {len(uuids)} 个服务："
                       f"{', '.join(uuids) or '空'}）")
-            if self.misses >= 3 and not self._maybe_auto_heal(len(uuids)):
-                self._log("语音：连续 3 次看不到 ATVV —— 这个进程里的蓝牙会话已经"
-                          "乱了。请点「重启」重新拉起客户端（重连治不好）。")
-            if not getattr(self, "_variant_hinted", False) and not self._ever_ok:
-                # ★ 只看到通用服务（1800/1801/180a/180f）、没有 ab5e… → 这支遥控器
-                #   **根本没有语音服务**。真机上见过：同一款"G9N9N/GA01919"兼容款，
-                #   不同批次差别很大 —— 有的带语音，有的只有 HID 按键。这句话直接给用户
-                #   一个结论和一条出路，省得反复怀疑软件。
-                self._variant_hinted = True
-                self._log(i18n.L(
-                    "语音：这台遥控器**没有语音服务**（ATVV，ab5e0001）—— 它多半不是原装"
-                    "G9N9N / GA01919（兼容款批次差异很大：同一链接买的两支可能一支能一支不能）。"
-                    "语音功能用不了，按键映射可能仍然可用。换一支原装遥控器，"
-                    "或改用 Google TV Streamer（2024）那支遥控器即可。",
-                    "Voice: this remote has **no voice service** (ATVV, ab5e0001) — it is very "
-                    "likely not a genuine G9N9N / GA01919 (compatible units vary a lot between "
-                    "batches: two remotes from one listing can behave differently). Voice will not "
-                    "work; key mapping may still work. Use a genuine remote, or the Google TV "
-                    "Streamer (2024) remote."))
+            healed = self.misses >= 3 and self._maybe_auto_heal(len(uuids))
+            if self.misses >= 3 and not healed:
+                if self._ever_ok:
+                    self._log("语音：连续 3 次看不到 ATVV —— 这个进程里的蓝牙会话已经"
+                              "乱了。请点「重启」重新拉起客户端（重连治不好）。")
+                elif not getattr(self, "_variant_hinted", False):
+                    # ★ 连续 3 次都只看到通用服务、没有 ab5e… 且本进程从没成功过 →
+                    #   这支遥控器**多半真的没有语音服务**。真机上见过：同一款
+                    #   "G9N9N/GA01919"兼容款，不同批次差别很大 —— 有的带语音，有的只有
+                    #   HID 按键。这句话直接给用户一个结论和一条出路，省得反复怀疑软件。
+                    #   ⚠ 必须等到第 3 次才下结论：真机日志里，刚重启的进程第一次常常
+                    #   只枚举到 6 个服务（缺 ATVV），16 秒后就自己好了 —— 第一次就报
+                    #   "没有语音服务"会把人吓一跳（2026-11-16 实测）。
+                    self._variant_hinted = True
+                    self._log(i18n.L(
+                        "语音：这台遥控器**没有语音服务**（ATVV，ab5e0001）—— 它多半不是原装"
+                        "G9N9N / GA01919（兼容款批次差异很大：同一链接买的两支可能一支能一支不能）。"
+                        "语音功能用不了，按键映射可能仍然可用。换一支原装遥控器，"
+                        "或改用 Google TV Streamer（2024）那支遥控器即可。",
+                        "Voice: this remote has **no voice service** (ATVV, ab5e0001) — it is very "
+                        "likely not a genuine G9N9N / GA01919 (compatible units vary a lot between "
+                        "batches: two remotes from one listing can behave differently). Voice will not "
+                        "work; key mapping may still work. Use a genuine remote, or the Google TV "
+                        "Streamer (2024) remote."))
             await self._close_current()
             return
 
