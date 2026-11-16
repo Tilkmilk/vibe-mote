@@ -824,10 +824,14 @@ class VoiceRole(threading.Thread):
     """独立线程里跑一个 asyncio 事件循环，保持 ATVV 长连接。"""
 
     def __init__(self, on_event, addr=ADDR_DEFAULT, audio=None, voice_spec=None,
-                 relay=True, on_auto_heal=None):
+                 relay=True, on_auto_heal=None, just_healed=False):
         super().__init__(daemon=True, name="VoiceRole")
         self.on_event = on_event
         self.on_auto_heal = on_auto_heal    # 会话坏了 → 由外层把整个客户端重启
+        # 本进程是「会话自愈」刚拉起来的（见 app.restart_client / HEALED_MARK）：
+        # 刚重启的头几次枚举常常仍缺 ATVV（蓝牙链路还没彻底回过神），别急着下
+        # "遥控器没有语音服务"的结论 —— 真机上 16 秒后就好了。
+        self._just_healed = bool(just_healed)
         self.addr = addr
         cfg = dict(audio or {})
         self.gain = float(cfg.get("gain", 4.0))
@@ -1344,6 +1348,16 @@ class VoiceRole(threading.Thread):
                 if self._ever_ok:
                     self._log("语音：连续 3 次看不到 ATVV —— 这个进程里的蓝牙会话已经"
                               "乱了。请点「重启」重新拉起客户端（重连治不好）。")
+                elif self._just_healed and not getattr(self, "_variant_hinted", False):
+                    # 本进程是刚自愈重启拉起来的：它**知道**这支遥控器有语音（上一进程拿到过），
+                    # 只是新进程的头几次枚举还可能残。别报"没有语音服务"，给个安稳的提示。
+                    self._variant_hinted = True
+                    self._log(i18n.L(
+                        "语音：刚自动重启过，服务表还没恢复（仍缺 ATVV）—— 再等几轮；"
+                        "若几分钟都不行，关掉其它可能的客户端后手动点「重启」。",
+                        "Voice: the client was just auto-restarted and the service table has not "
+                        "recovered yet (ATVV still missing) — give it a few more rounds; if it "
+                        "stays like this for minutes, close other clients and click “Restart”."))
                 elif not getattr(self, "_variant_hinted", False):
                     # ★ 连续 3 次都只看到通用服务、没有 ab5e… 且本进程从没成功过 →
                     #   这支遥控器**多半真的没有语音服务**。真机上见过：同一款

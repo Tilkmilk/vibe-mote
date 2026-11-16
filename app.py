@@ -64,6 +64,11 @@ AUTOSTART_VBS = os.path.join(HERE, "启动遥控器.vbs")
 READY = os.path.join(HERE, "_ready.txt")
 # 「上次是不是正常退出」的记录：正常退出时删掉（见 main 的清理段）
 RUNSTATE = os.path.join(HERE, "_run_state.txt")
+# 自愈重启的"交接条"：restart_client(reason="auto-heal") 写下时间戳，新进程读到
+# （且足够新）就知道自己是自愈拉起来的 —— 前几次枚举仍缺 ATVV 时不要误报
+# "遥控器没有语音服务"（真机上重启后 2 次失败、16 秒后就自己好了）。
+HEALED_MARK = os.path.join(HERE, "_voice_healed.txt")
+JUST_HEALED = False     # 由 main() 读交接条后置位；VoiceRole 用它决定提示措辞
 
 DEFAULT_PORT = 8787
 CREATE_NO_WINDOW = 0x08000000
@@ -1270,6 +1275,14 @@ def restart_client(reason="manual"):
     返回 (ok, msg)；ok=True 时本进程会很快 os._exit(0)。
     """
     global _RESTARTING
+    if reason == "auto-heal":
+        # 给新进程留张"交接条"（见 HEALED_MARK）：它据此知道"我上辈子是有语音的"，
+        # 头几次枚举还残时不至于吓唬用户说遥控器没有语音服务。
+        try:
+            with open(HEALED_MARK, "w", encoding="utf-8") as f:
+                f.write(str(time.time()))
+        except OSError:
+            pass
     with _RESTART_LOCK:
         if _RESTARTING:
             return False, i18n.L("已经在重启了", "Already restarting")
@@ -1281,6 +1294,11 @@ def restart_client(reason="manual"):
                              creationflags=0x00000008 | 0x00000200,   # DETACHED | NEW_GROUP
                              close_fds=True)
         except Exception as e:
+            if reason == "auto-heal":
+                try:
+                    os.remove(HEALED_MARK)
+                except OSError:
+                    pass
             return False, i18n.L(f"重启失败：{e!r}", f"Restart failed: {e!r}")
         _RESTARTING = True
     if reason == "auto-heal":
@@ -1834,7 +1852,8 @@ class Roles:
                     relay=bool((self.cfg.get("audio") or {}).get("relay", True)),
                     # 语音会话坏了（连得上但没有 ATVV）→ 自动重启整个客户端。
                     # 同一进程里重连治不好，只有新进程能重新协商出完整服务表。
-                    on_auto_heal=lambda: restart_client("auto-heal"))
+                    on_auto_heal=lambda: restart_client("auto-heal"),
+                    just_healed=JUST_HEALED)
                 self.voice.start()
             if self.keytap is None and importlib.util.find_spec("frida") is not None:
                 import keys as keys_mod
@@ -3128,7 +3147,7 @@ def main():
     if args.supervise:
         return supervise_restart(args.supervise)
 
-    global ROLES
+    global ROLES, JUST_HEALED
     cfg = load_config()
     # 语言要在启动任何会说话的东西之前定好（角色备注、启动日志都按它出）
     i18n.load_from_config()
@@ -3217,6 +3236,22 @@ def main():
     BUS.log("=" * 58)
     BUS.log(i18n.L("  遥控器客户端 启动", "  VibeMote client starting"))
     BUS.log("=" * 58)
+
+    # 自愈交接条（见 HEALED_MARK）：刚才是不是"语音会话自愈"把我拉起来的？
+    # 只认 3 分钟内的，读完就删 —— 手动启动的进程不该继承这个身份。
+    try:
+        with open(HEALED_MARK, encoding="utf-8") as f:
+            JUST_HEALED = time.time() - float(f.read().strip()) < 180
+    except Exception:
+        JUST_HEALED = False
+    try:
+        os.remove(HEALED_MARK)
+    except OSError:
+        pass
+    if JUST_HEALED:
+        BUS.log(i18n.L("语音：本进程由「会话自愈」重新拉起 —— 头几次枚举还缺 ATVV 属正常。",
+                       "Voice: this process was relaunched by session self-heal — it is normal "
+                       "for the first few enumerations to still lack ATVV."))
 
     # 上一次「退出后再删」的结果。那条路是**分离进程**干的，当时没法回报成功没有 ——
     # 它会留下一个结果文件，这里读出来如实说（否则"报成功其实没删掉"会重演：
