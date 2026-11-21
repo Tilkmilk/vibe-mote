@@ -18,6 +18,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import importlib.util
 import json
 import os
@@ -49,7 +50,7 @@ if HERE not in sys.path:
 import i18n  # noqa: E402  （必须在 sys.path 之后就位）
 
 APP_NAME = "VibeMote"
-APP_VERSION = "1.1.1"          # 报 bug 时请带上这个版本号（界面「设置 → 界面」能看到）
+APP_VERSION = "1.1.2"          # 报 bug 时请带上这个版本号（界面「设置 → 界面」能看到）
 WEB = os.path.join(HERE, "web")
 CONFIG = os.path.join(HERE, "config.json")
 REQUIREMENTS = os.path.join(HERE, "requirements.txt")
@@ -3086,7 +3087,43 @@ def our_instances(procs=None):
     return sorted(set(out))
 
 
+_LOCK_HANDLE = None     # Windows 命名互斥体句柄（单实例锁），进程退出时系统自动释放
+
+
 def take_lock():
+    """单实例锁。返回锁对象（或 None 表示已有实例在跑）。
+
+    ★ 不要再用「固定 TCP 端口」当锁：原来用 49741，这个端口落在 Windows 的**动态
+      端口段**里，会被无关的系统服务抢走。真机就撞上了：services.exe 监听
+      0.0.0.0:49741 → bind 失败 → 客户端误以为"已有另一个实例在跑"，界面永远起不来，
+      看门狗每 5 分钟重试一次、每 5 分钟失败一次（日志里连刷了 9 条，按键/语音全都没了）。
+      改用**命名互斥体**：名字按程序目录取哈希，不占端口、不和任何程序冲突，
+      进程一退出自动释放。
+    """
+    global _LOCK_HANDLE
+    if _LOCK_HANDLE is not None:
+        return _LOCK_HANDLE
+    if os.name == "nt":
+        try:
+            import ctypes
+            from ctypes import wintypes
+            name = "Local\\VibeMote-" + hashlib.sha1(
+                os.path.normcase(HERE).encode("utf-8")).hexdigest()[:16]
+            k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+            k32.CreateMutexW.argtypes = [wintypes.LPVOID, wintypes.BOOL, wintypes.LPCWSTR]
+            k32.CreateMutexW.restype = wintypes.HANDLE
+            h = k32.CreateMutexW(None, False, name)
+            err = ctypes.get_last_error()
+            if not h:
+                raise OSError(err, "CreateMutexW failed")
+            if err == 183:          # ERROR_ALREADY_EXISTS：确实已经有一个实例
+                k32.CloseHandle(h)
+                return None
+            _LOCK_HANDLE = h
+            return h
+        except Exception:
+            # 互斥体这条路出问题就退回端口锁 —— 宁可退化，也不能起不来。
+            pass
     s = socket.socket()
     try:
         s.bind(("127.0.0.1", LOCK_PORT))
@@ -3228,9 +3265,12 @@ def main():
                         webbrowser.open(url)
                 return 0
             time.sleep(0.25)
-        BUS.log(i18n.L("已有另一个实例在跑，但界面端口没起来。先关掉旧实例再试。",
-                       "Another instance is already running, but its UI port is not up. "
-                       "Close the old instance and try again."))
+        left = our_instances()
+        BUS.log(i18n.L(
+            f"已有另一个实例在跑，但界面端口没起来（实例 PID：{left or '看不到'}）。"
+            f"先关掉旧实例再试。",
+            f"Another instance is already running, but its UI port is not up "
+            f"(instance PID: {left or 'not visible'}). Close the old instance and try again."))
         return 1
 
     BUS.log("=" * 58)
