@@ -285,18 +285,22 @@ class Player:
             self._rep_stop.set()
             self._rep_stop = None
 
-    def _holdmouse_start(self, value):
+    def _holdmouse_start(self, value, initial=None, interval=None):
         self._holdmouse_stop()           # 同时只按住一个鼠标动作
         if value in MOUSE_REPEAT:
             mouse_action(value)          # 先来一格（按下去就有反馈）
             stop = threading.Event()
             self._rep_stop = stop
+            # 每条映射可以自带节奏（毫秒）；没写就用全局默认。夹住范围，
+            # 免得手写 config 里一个 0 把界面线程刷爆。
+            ini = REPEAT_INITIAL if initial is None else max(0.0, min(5.0, float(initial) / 1000.0))
+            iv = REPEAT_INTERVAL if interval is None else max(0.01, min(2.0, float(interval) / 1000.0))
 
             def loop():
                 # 先等一小会儿再开始连发：轻点一下只滚一格，按住不放才连续滚
-                if stop.wait(REPEAT_INITIAL):
+                if stop.wait(ini):
                     return
-                while not stop.wait(REPEAT_INTERVAL):
+                while not stop.wait(iv):
                     mouse_action(value)
 
             threading.Thread(target=loop, daemon=True, name="holdmouse").start()
@@ -320,10 +324,14 @@ class Player:
             mouse_action(value)
             return
         if t == "holdmouse":
-            self._holdmouse_start(value)
+            self._holdmouse_start(value, m.get("repeat_initial"), m.get("repeat_interval"))
             return
         if t == "text":
             send_text(str(m.get("text") or ""))
+            if m.get("enter"):
+                vk_enter = vk_of("ENTER")
+                if vk_enter:
+                    self._tap([], vk_enter)
             return
         vk = vk_of(value)
         if not vk:

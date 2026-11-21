@@ -721,11 +721,44 @@ input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;bac
                 <textarea id="mapText" data-i18n-placeholder="map.textPh" placeholder="按下遥控器键时输入的文本"></textarea>
               </div>
 
+              <div class="field" id="fieldTextEnter">
+                <label class="switch">
+                  <input type="checkbox" id="mapTextEnter">
+                  <span data-i18n="map.textEnter">打完文本后自动按一次回车</span>
+                </label>
+              </div>
+
+              <div class="field" id="fieldRepeat">
+                <label data-i18n="map.repeat">按住连发的节奏</label>
+                <div class="row">
+                  <label for="mapRepeatInitial" data-i18n="map.repeatInitial">首格延迟(ms)</label>
+                  <input type="number" id="mapRepeatInitial" class="inline-input" min="0" max="5000" step="50" value="300" style="flex:0 0 110px">
+                  <label for="mapRepeatInterval" data-i18n="map.repeatInterval">连发间隔(ms)</label>
+                  <input type="number" id="mapRepeatInterval" class="inline-input" min="10" max="2000" step="5" value="70" style="flex:0 0 110px">
+                </div>
+                <div class="hint" data-i18n="map.repeatHint">默认 300 / 70：轻点只滚一格，按住连续滚。</div>
+              </div>
+
               <div class="row" style="margin-top:16px">
                 <button class="btn primary" type="button" id="btnSaveMap" data-i18n="map.save">保存这个映射</button>
                 <button class="btn danger" type="button" id="btnClearMap" data-i18n="map.clear">清除这个映射</button>
               </div>
               <div class="mapping-hint" id="mapPanelHint"></div>
+
+              <div class="field" id="presetBox" style="margin-top:18px;border-top:1px solid var(--line,#e5e7eb);padding-top:14px">
+                <label data-i18n="preset.title">套餐（整套按键映射）</label>
+                <div class="row">
+                  <select id="mapPreset" style="flex:1"></select>
+                  <button class="btn" type="button" id="btnPresetLoad" data-i18n="preset.load">载入并使用</button>
+                  <button class="btn danger" type="button" id="btnPresetDelete" data-i18n="preset.delete">删除</button>
+                </div>
+                <div class="row" style="margin-top:8px">
+                  <input type="text" id="mapPresetName" class="inline-input" style="flex:1" data-i18n-placeholder="preset.namePh" placeholder="新套餐名称">
+                  <button class="btn" type="button" id="btnPresetSaveAs" data-i18n="preset.saveAs">另存为新套餐</button>
+                  <button class="btn" type="button" id="btnPresetUpdate" data-i18n="preset.update">覆盖保存到该套餐</button>
+                </div>
+                <div class="hint" data-i18n="preset.hint">内置套餐只读；「另存为」会复制当前全部按键映射。自定义套餐也能在「自动切换」的规则里选。</div>
+              </div>
             </div>
           </div>
         </div>
@@ -1135,6 +1168,24 @@ input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;bac
       'map.optMouse': 'mouse · 鼠标',
       'map.optHoldMouse': 'holdmouse · 按住鼠标',
       'map.optText': 'text · 文本',
+      'map.textEnter': '打完文本后自动按一次回车',
+      'map.repeat': '按住连发的节奏',
+      'map.repeatInitial': '首格延迟(ms)',
+      'map.repeatInterval': '连发间隔(ms)',
+      'map.repeatHint': '默认 300 / 70：轻点只滚一格，按住连续滚。',
+      'preset.title': '套餐（整套按键映射）',
+      'preset.load': '载入并使用',
+      'preset.delete': '删除',
+      'preset.saveAs': '另存为新套餐',
+      'preset.update': '覆盖保存到该套餐',
+      'preset.namePh': '新套餐名称',
+      'preset.hint': '内置套餐只读；「另存为」会复制当前全部按键映射。自定义套餐也能在「自动切换」的规则里选。',
+      'preset.builtinTag': '（内置）',
+      'preset.customTag': '（自定义）',
+      'preset.nameNeeded': '先给套餐起个名字',
+      'preset.loaded': '已载入「{0}」',
+      'preset.empty': '这套套餐是空的，先编辑几个按键再保存',
+      'preset.deleteConfirm': '删除自定义套餐「{0}」？',
       'map.target': '目标键',
       'map.capturePh': '点右侧按钮捕获',
       'map.capture': '按键捕获',
@@ -1529,6 +1580,24 @@ input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;bac
       'map.optMouse': 'mouse · mouse',
       'map.optHoldMouse': 'holdmouse · hold mouse',
       'map.optText': 'text · text',
+      'map.textEnter': 'Press Enter once after typing the text',
+      'map.repeat': 'Hold-repeat timing',
+      'map.repeatInitial': 'Initial delay (ms)',
+      'map.repeatInterval': 'Repeat interval (ms)',
+      'map.repeatHint': 'Defaults 300 / 70: a tap scrolls once, holding repeats.',
+      'preset.title': 'Preset (a full set of key mappings)',
+      'preset.load': 'Load & apply',
+      'preset.delete': 'Delete',
+      'preset.saveAs': 'Save as new preset',
+      'preset.update': 'Overwrite this preset',
+      'preset.namePh': 'New preset name',
+      'preset.hint': 'Built-in presets are read-only; “Save as” copies all current key mappings. Custom presets can also be used in auto-switch rules.',
+      'preset.builtinTag': ' (built-in)',
+      'preset.customTag': ' (custom)',
+      'preset.nameNeeded': 'Give the preset a name first',
+      'preset.loaded': 'Loaded “{0}”',
+      'preset.empty': 'This preset is empty — edit some keys and save it first',
+      'preset.deleteConfirm': 'Delete custom preset “{0}”?',
       'map.target': 'Target key',
       'map.capturePh': 'Click the button on the right to capture',
       'map.capture': 'Capture key',
@@ -2577,7 +2646,9 @@ input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;bac
     $('#fieldKey').hidden = !(type === 'key' || type === 'combo' || type === 'hold' || type === 'holdcombo');
     $('#fieldMods').hidden = !(type === 'combo' || type === 'holdcombo');
     $('#fieldMouse').hidden = !(type === 'mouse' || type === 'holdmouse');
+    $('#fieldRepeat').hidden = (type !== 'holdmouse');
     $('#fieldText').hidden = (type !== 'text');
+    $('#fieldTextEnter').hidden = (type !== 'text');
   }
 
   function selectKey(id, scroll) {
@@ -2626,6 +2697,9 @@ input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;bac
     $('#mapValue').value = (shown && shown.value && MOUSE_VALUES.indexOf(shown.value) < 0) ? shown.value : '';
     $('#mapText').value = (shown && shown.text) ? shown.text : '';
     $('#mapMouse').value = (shown && MOUSE_VALUES.indexOf(shown.value) >= 0) ? shown.value : 'wheel_up';
+    $('#mapRepeatInitial').value = (shown && shown.repeat_initial != null) ? shown.repeat_initial : 300;
+    $('#mapRepeatInterval').value = (shown && shown.repeat_interval != null) ? shown.repeat_interval : 70;
+    $('#mapTextEnter').checked = !!(shown && shown.enter);
 
     $('#btnSaveMap').textContent = t('map.save');
 
@@ -2644,8 +2718,15 @@ input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;bac
       m.value = ($('#mapValue').value || '').trim().toUpperCase();
     } else if (type === 'mouse' || type === 'holdmouse') {
       m.value = $('#mapMouse').value;
+      if (type === 'holdmouse') {
+        var ri = parseInt($('#mapRepeatInitial').value, 10);
+        var iv = parseInt($('#mapRepeatInterval').value, 10);
+        if (isFinite(ri)) m.repeat_initial = Math.max(0, Math.min(5000, ri));
+        if (isFinite(iv)) m.repeat_interval = Math.max(10, Math.min(2000, iv));
+      }
     } else if (type === 'text') {
       m.text = $('#mapText').value;
+      if ($('#mapTextEnter').checked) m.enter = true;
     }
     if (type === 'combo' || type === 'holdcombo') m.mods = readMods($('#mapMods'));
     return m;
@@ -2690,12 +2771,16 @@ input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;bac
       Object.keys(r.keys).forEach(function (k) {
         var m = r.keys[k];
         if (m && typeof m === 'object' && m.type) {
-          keys[k] = {
+          var one = {
             type: m.type,
             value: m.value == null ? '' : String(m.value),
             mods: Array.isArray(m.mods) ? m.mods.slice() : [],
             text: m.text == null ? '' : String(m.text)
           };
+          if (typeof m.repeat_initial === 'number') one.repeat_initial = m.repeat_initial;
+          if (typeof m.repeat_interval === 'number') one.repeat_interval = m.repeat_interval;
+          if (m.enter) one.enter = true;
+          keys[k] = one;
         }
       });
     }
@@ -3165,6 +3250,7 @@ input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;bac
   /* ==================== 预设方案（应用 × 输入法） ==================== */
   var PROFILES = null;
   var profChoice = { app: 'workbuddy', ime: 'qwen' };
+  var CUSTOM_PROFILES = [];      // 用户「另存为」的套餐：[{id:'custom:名字', name, keys}]
 
   function loadProfiles() {
     return api('/api/profiles').then(function (r) {
@@ -3173,6 +3259,7 @@ input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;bac
         return false;
       }
       PROFILES = r;
+      CUSTOM_PROFILES = Array.isArray(r.custom) ? r.custom : [];
       var sa = $('#profApp'), si = $('#profIme');
       sa.innerHTML = ''; si.innerHTML = '';
       r.apps.forEach(function (a) {
@@ -3205,6 +3292,7 @@ input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;bac
       });
       renderProfilePreview();
       loadAutoProfile();
+      if ($('#mapPreset')) renderPresetSelect();
     });
   }
 
@@ -3245,6 +3333,92 @@ input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;bac
     note.textContent = t('keys.profileNote', cur.app.name, cur.app.note, cur.ime.name, cur.ime.note);
   }
 
+  /* ==================== 套餐管理（自定义套餐） ==================== */
+  function presetOptions() {
+    var out = [];
+    if (PROFILES && PROFILES.apps) {
+      PROFILES.apps.forEach(function (a) {
+        out.push({ value: 'builtin:' + a.id, name: a.name + t('preset.builtinTag'),
+                   keys: (a.keys && typeof a.keys === 'object') ? a.keys : {} });
+      });
+    }
+    CUSTOM_PROFILES.forEach(function (c) {
+      out.push({ value: c.id, name: c.name + t('preset.customTag'),
+                 keys: (c.keys && typeof c.keys === 'object') ? c.keys : {} });
+    });
+    return out;
+  }
+
+  function currentPreset() {
+    var v = $('#mapPreset') ? $('#mapPreset').value : '';
+    return presetOptions().filter(function (p) { return p.value === v; })[0] || null;
+  }
+
+  function renderPresetSelect(keep) {
+    var sel = $('#mapPreset');
+    if (!sel) return;
+    var cur = keep || sel.value;
+    sel.innerHTML = '';
+    presetOptions().forEach(function (p) {
+      var o = document.createElement('option');
+      o.value = p.value; o.textContent = p.name; sel.appendChild(o);
+    });
+    if (cur) sel.value = cur;
+    updatePresetButtons();
+  }
+
+  function updatePresetButtons() {
+    var p = currentPreset();
+    var isCustom = !!(p && p.value.indexOf('custom:') === 0);
+    var upd = $('#btnPresetUpdate'), del = $('#btnPresetDelete');
+    if (upd) upd.disabled = !isCustom;
+    if (del) del.disabled = !isCustom;
+  }
+
+  function loadPreset() {
+    var p = currentPreset();
+    if (!p || !config) return;
+    if (!Object.keys(p.keys).length) { toast(t('preset.empty'), true); return; }
+    config.keys = JSON.parse(JSON.stringify(p.keys));
+    saveConfig().then(function (ok) {
+      if (ok) { renderConfigAll(); toast(t('preset.loaded', p.name)); }
+    });
+  }
+
+  function savePresetAs() {
+    if (!config) return;
+    var name = ($('#mapPresetName').value || '').trim();
+    if (!name) { toast(t('preset.nameNeeded'), true); return; }
+    doAction({ action: 'save-custom-profile', name: name, keys: config.keys })
+      .then(function (r) {
+        if (r && r.ok) {
+          $('#mapPresetName').value = '';
+          loadProfiles().then(function () { renderPresetSelect('custom:' + name); });
+        }
+      });
+  }
+
+  function updatePreset() {
+    var p = currentPreset();
+    if (!p || p.value.indexOf('custom:') !== 0 || !config) return;
+    var name = p.value.slice(7);
+    doAction({ action: 'save-custom-profile', name: name, keys: config.keys })
+      .then(function (r) {
+        if (r && r.ok) loadProfiles();
+      });
+  }
+
+  function deletePreset() {
+    var p = currentPreset();
+    if (!p || p.value.indexOf('custom:') !== 0) return;
+    var name = p.value.slice(7);
+    if (!confirm(t('preset.deleteConfirm', name))) return;
+    doAction({ action: 'delete-custom-profile', name: name })
+      .then(function (r) {
+        if (r && r.ok) loadProfiles();
+      });
+  }
+
   function applyProfile() {
     var cur = currentProfile();
     if (!cur) return;
@@ -3265,8 +3439,24 @@ input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;bac
   function autoApps() { return (PROFILES && PROFILES.apps) || []; }
 
   function autoAppName(id) {
+    if (id && id.indexOf('custom:') === 0) {
+      var c = CUSTOM_PROFILES.filter(function (x) { return x.id === id; })[0];
+      return c ? c.name : id.slice(7);
+    }
     var a = autoApps().filter(function (x) { return x.id === id; })[0];
     return a ? a.name : id;
+  }
+
+  function autoPresetOptions(sel, selected) {
+    autoApps().forEach(function (a) {
+      var o = document.createElement('option');
+      o.value = a.id; o.textContent = a.name; sel.appendChild(o);
+    });
+    CUSTOM_PROFILES.forEach(function (c) {
+      var o = document.createElement('option');
+      o.value = c.id; o.textContent = c.name + t('preset.customTag'); sel.appendChild(o);
+    });
+    if (selected) sel.value = selected;
   }
 
   function loadAutoProfile() {
@@ -3295,11 +3485,7 @@ input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;bac
     inp.placeholder = t('auto.exePh');
     inp.dataset.exe = '1';
     var sel = document.createElement('select');
-    autoApps().forEach(function (a) {
-      var o = document.createElement('option');
-      o.value = a.id; o.textContent = a.name; sel.appendChild(o);
-    });
-    sel.value = appId || (autoApps()[0] && autoApps()[0].id) || '';
+    autoPresetOptions(sel, appId);
     sel.dataset.app = '1';
     var del = el('button', 'btn danger', '×');
     del.type = 'button';
@@ -3334,11 +3520,7 @@ input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;bac
     var keep = document.createElement('option');
     keep.value = ''; keep.textContent = t('auto.keep');
     fb.appendChild(keep);
-    autoApps().forEach(function (a) {
-      var o = document.createElement('option');
-      o.value = a.id; o.textContent = a.name; fb.appendChild(o);
-    });
-    fb.value = AUTO.fallback || '';
+    autoPresetOptions(fb, AUTO.fallback || '');
     $('#autoEnabled').checked = !!AUTO.enabled;
   }
 
@@ -3514,6 +3696,11 @@ input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;bac
     });
     $('#btnAutoAddManual').addEventListener('click', function () { addAutoRule('', ''); });
     $('#btnAutoSave').addEventListener('click', saveAutoProfile);
+    $('#mapPreset').addEventListener('change', updatePresetButtons);
+    $('#btnPresetLoad').addEventListener('click', loadPreset);
+    $('#btnPresetSaveAs').addEventListener('click', savePresetAs);
+    $('#btnPresetUpdate').addEventListener('click', updatePreset);
+    $('#btnPresetDelete').addEventListener('click', deletePreset);
     $('#btnRestartApp').addEventListener('click', function () {
       doAction({ action: 'restart-app' }, $('#checkBox'), t('act.restartApp'))
         .then(function (r) { if (r && r.ok) toast(r.msg || t('toast.restarting')); });

@@ -50,7 +50,7 @@ if HERE not in sys.path:
 import i18n  # noqa: E402  （必须在 sys.path 之后就位）
 
 APP_NAME = "VibeMote"
-APP_VERSION = "1.2.0"          # 报 bug 时请带上这个版本号（界面「设置 → 界面」能看到）
+APP_VERSION = "1.3.0"          # 报 bug 时请带上这个版本号（界面「设置 → 界面」能看到）
 WEB = os.path.join(HERE, "web")
 CONFIG = os.path.join(HERE, "config.json")
 REQUIREMENTS = os.path.join(HERE, "requirements.txt")
@@ -102,6 +102,8 @@ DEFAULT_CONFIG = {
     "keys": RECOMMENDED,
     # 按前台应用自动切换套餐：exe（小写文件名）→ 预设 app id
     "auto_profile": {"enabled": False, "fallback": "", "rules": {}},
+    # 用户自己「另存为」的套餐：{名字: {"keys": {...}}}
+    "custom_profiles": {},
 }
 TYPES = ("key", "hold", "combo", "holdcombo", "mouse", "holdmouse", "text")
 
@@ -256,6 +258,8 @@ def _merge_defaults(cfg):
     ap = dict(DEFAULT_CONFIG["auto_profile"])
     ap.update(cfg.get("auto_profile") or {})
     out["auto_profile"] = ap
+    cp = cfg.get("custom_profiles")
+    out["custom_profiles"] = dict(cp) if isinstance(cp, dict) else {}
     keys_map = cfg.get("keys")
     out["keys"] = dict(keys_map) if isinstance(keys_map, dict) else dict(RECOMMENDED)
     return out
@@ -285,6 +289,31 @@ def load_config():
                        f"Failed to read the config (6 retries), using defaults: "
                        f"{type(last).__name__}: {last}"))
     return _merge_defaults({})
+
+
+def _clean_key_item(m):
+    """校验并裁剪一条按键映射；不合法返回 None。
+
+    可选参数（只有写了才保留，保持 config.json 干净）：
+      · holdmouse 的 repeat_initial / repeat_interval（毫秒）：首格延迟与连发间隔；
+      · text 的 enter（true）：打完字再按一次回车。
+    """
+    if not isinstance(m, dict) or m.get("type") not in TYPES \
+            or not isinstance(m.get("value"), str):
+        return None
+    item = {"type": m["type"], "value": m["value"],
+            "mods": [str(x).upper() for x in (m.get("mods") or [])],
+            "text": str(m.get("text") or "")}
+    try:
+        if m.get("repeat_initial") is not None:
+            item["repeat_initial"] = max(0, min(5000, int(m["repeat_initial"])))
+        if m.get("repeat_interval") is not None:
+            item["repeat_interval"] = max(10, min(2000, int(m["repeat_interval"])))
+    except (TypeError, ValueError):
+        pass
+    if m.get("enter"):
+        item["enter"] = True
+    return item
 
 
 def save_config(cfg):
@@ -327,20 +356,38 @@ def save_config(cfg):
                                "key": m["value"],
                                "mods": [str(x).upper() for x in (m.get("mods") or [])]}
             continue
-        keys_map[k] = {"type": m["type"], "value": m["value"],
-                       "mods": [str(x).upper() for x in (m.get("mods") or [])],
-                       "text": str(m.get("text") or "")}
+        item = _clean_key_item(m)
+        if item:
+            keys_map[k] = item
     clean["keys"] = keys_map
     if voice_alias:
         clean["voice"] = voice_alias
-    # 自动套餐：exe（只留文件名、小写）→ 预设 app id。无效的 app id 直接丢掉，
-    # 免得界面/手写出一个不存在的套餐名，运行时无从应用。
+    # 自定义套餐：{名字: {"keys": {...}}}。内置套餐在 profiles.py 里（只读），
+    # 这里存用户自己"另存为"的那几套；同样走白名单校验。
+    cp = {}
+    for name, spec in (cfg.get("custom_profiles") or {}).items():
+        nm = str(name or "").strip()[:40]
+        if not nm or not isinstance(spec, dict):
+            continue
+        ckeys = {}
+        for k, m in (spec.get("keys") or {}).items():
+            if str(k).startswith("_") or k == "voice":
+                continue
+            item = _clean_key_item(m)
+            if item:
+                ckeys[k] = item
+        if ckeys:
+            cp[nm] = {"keys": ckeys}
+    clean["custom_profiles"] = cp
+    # 自动套餐：exe（只留文件名、小写）→ 预设 id（内置，或 custom:<名字>）。
+    # 无效的 id 直接丢掉，免得界面/手写出一个不存在的套餐名，运行时无从应用。
     ap = cfg.get("auto_profile") or {}
     try:
         import profiles as _prof
         _valid_apps = set(_prof.APPS.keys())
     except Exception:
         _valid_apps = {"workbuddy", "codex", "claude", "generic"}
+    _valid_apps |= {"custom:" + n for n in cp}
     _rules = {}
     for _exe, _app in (ap.get("rules") or {}).items():
         _exe_s = os.path.basename(str(_exe or "")).strip().lower()
@@ -2047,15 +2094,24 @@ class Roles:
         self._apply_auto_profile(app_id, exe)
 
     def _apply_auto_profile(self, app_id, exe):
-        import profiles
-        app = profiles.APPS.get(app_id)
-        if app is None:
-            return
-        ime_id = str((self.cfg.get("profile") or {}).get("ime") or profiles.DEFAULT_IME)
-        keys, _voice = profiles.build(app_id, ime_id)
+        merged = load_config()
+        if app_id.startswith("custom:"):
+            cname = app_id[7:]
+            spec = (merged.get("custom_profiles") or {}).get(cname)
+            if not isinstance(spec, dict) or not (spec.get("keys") or {}):
+                return
+            keys = dict(spec["keys"])
+            name = cname
+        else:
+            import profiles
+            app = profiles.APPS.get(app_id)
+            if app is None:
+                return
+            ime_id = str((self.cfg.get("profile") or {}).get("ime") or profiles.DEFAULT_IME)
+            keys, _voice = profiles.build(app_id, ime_id)
+            name = i18n.pick(app.get("name"))
         # 和「应用预设」同一语义：落盘 + 热更新，保证界面显示的、配置里存的、
         # 实际生效的是同一套（否则按键页会显示一套、按下去是另一套）。
-        merged = load_config()
         merged["keys"] = keys
         prof = dict(merged.get("profile") or {})
         prof["app"] = app_id
@@ -2064,7 +2120,6 @@ class Roles:
         self.cfg = _merge_defaults(clean)
         self.keytap.set_mapping(self.cfg.get("keys") or {})
         self.auto_active = app_id
-        name = i18n.pick(app.get("name"))
         BUS.log(i18n.L(
             f"自动套餐：前台 {exe or '未知程序'} → 应用「{name}」（{len(keys)} 个按键）",
             f"Auto profile: foreground {exe or 'unknown program'} → applied “{name}” "
@@ -2670,10 +2725,19 @@ class Handler(BaseHTTPRequestHandler):
                                "voice": cfg["voice"], "audio": cfg["audio"],
                                "keys": cfg["keys"],
                                "auto_profile": cfg.get("auto_profile")
-                               or DEFAULT_CONFIG["auto_profile"]})
+                               or DEFAULT_CONFIG["auto_profile"],
+                               "custom_profiles": cfg.get("custom_profiles") or {}})
         if path == "/api/profiles":
             import profiles
-            return self._json(profiles.catalog())
+            cat = profiles.catalog()
+            # 自定义套餐（用户「另存为」的）随目录一起下发：界面和自动切换规则
+            # 都要能把它们和内置套餐同等对待。
+            cp = cfg.get("custom_profiles") or {}
+            cat["custom"] = [
+                {"id": "custom:" + str(n), "name": str(n),
+                 "keys": (spec or {}).get("keys") or {}}
+                for n, spec in cp.items()]
+            return self._json(cat)
         if path == "/api/uninstall-items":
             import uninstall as un_mod
             # 带上"现在在不在 / 多大"：界面上会显示「（154 MB）」「（不存在）」，
@@ -2803,6 +2867,8 @@ class Handler(BaseHTTPRequestHandler):
                 merged["remote_addr"] = body["remote_addr"]
             if "auto_profile" in body and isinstance(body["auto_profile"], dict):
                 merged["auto_profile"] = body["auto_profile"]
+            if "custom_profiles" in body and isinstance(body["custom_profiles"], dict):
+                merged["custom_profiles"] = body["custom_profiles"]
             clean = save_config(merged)
             if ROLES:
                 ROLES.apply_config(_merge_defaults(clean))
@@ -2819,6 +2885,72 @@ class Handler(BaseHTTPRequestHandler):
         if act == "probe-foreground":
             # 界面「添加当前前台程序」用：返回前台窗口的 exe 文件名。
             return self._json({"ok": True, "exe": foreground_exe()})
+        if act == "save-custom-profile":
+            name = str((body or {}).get("name") or "").strip()[:40]
+            keys = (body or {}).get("keys")
+            if not name or not isinstance(keys, dict) or not keys:
+                return self._json({"ok": False,
+                                   "msg": i18n.L("套餐名和按键都不能为空",
+                                                 "Profile name and keys cannot be empty")})
+            merged = load_config()
+            cp = dict(merged.get("custom_profiles") or {})
+            cp[name] = {"keys": keys}
+            merged["custom_profiles"] = cp
+            clean = save_config(merged)
+            if ROLES:
+                # 只更新内存里的套餐目录，不动当前生效的按键映射
+                ROLES.cfg = _merge_defaults(clean)
+            n = len((clean.get("custom_profiles") or {}).get(name, {}).get("keys") or {})
+            BUS.log(i18n.L(f"已保存自定义套餐「{name}」（{n} 个按键）",
+                           f"Saved custom profile “{name}” ({n} keys)"))
+            return self._json({
+                "ok": True,
+                "msg": i18n.L(f"已保存套餐「{name}」：{n} 个按键",
+                              f"Saved profile “{name}”: {n} keys"),
+                "data": {"name": name}})
+        if act == "delete-custom-profile":
+            name = str((body or {}).get("name") or "").strip()
+            merged = load_config()
+            cp = dict(merged.get("custom_profiles") or {})
+            if name not in cp:
+                return self._json({"ok": False,
+                                   "msg": i18n.L("没有这个自定义套餐",
+                                                 "No such custom profile")})
+            cp.pop(name)
+            merged["custom_profiles"] = cp
+            # 自动切换规则里如果引用了这套，一并清掉（否则会留下指向不存在套餐的规则）
+            ap = dict(merged.get("auto_profile") or {})
+            ap["rules"] = {k: v for k, v in (ap.get("rules") or {}).items()
+                           if v != "custom:" + name}
+            if ap.get("fallback") == "custom:" + name:
+                ap["fallback"] = ""
+            merged["auto_profile"] = ap
+            clean = save_config(merged)
+            if ROLES:
+                ROLES.cfg = _merge_defaults(clean)
+            BUS.log(i18n.L(f"已删除自定义套餐「{name}」",
+                           f"Deleted custom profile “{name}”"))
+            return self._json({"ok": True,
+                               "msg": i18n.L(f"已删除「{name}」", f"Deleted “{name}”")})
+        if act == "apply-custom-profile":
+            name = str((body or {}).get("name") or "").strip()
+            merged = load_config()
+            spec = (merged.get("custom_profiles") or {}).get(name)
+            if not isinstance(spec, dict) or not (spec.get("keys") or {}):
+                return self._json({"ok": False,
+                                   "msg": i18n.L("没有这个自定义套餐",
+                                                 "No such custom profile")})
+            merged["keys"] = spec["keys"]
+            clean = save_config(merged)
+            if ROLES:
+                ROLES.apply_config(_merge_defaults(clean))
+            n = len(clean["keys"])
+            BUS.log(i18n.L(f"已应用自定义套餐「{name}」（{n} 个按键）",
+                           f"Applied custom profile “{name}” ({n} keys)"))
+            return self._json({"ok": True,
+                               "msg": i18n.L(f"已应用「{name}」：{n} 个按键",
+                                             f"Applied “{name}”: {n} keys"),
+                               "data": {"keys": clean["keys"]}})
         if act == "apply-profile":
             import profiles
             app_id = str((body or {}).get("app") or "").strip()
