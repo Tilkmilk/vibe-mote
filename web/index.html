@@ -494,7 +494,8 @@ input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;bac
   .content{padding:16px 14px 36px}
   .srow .k{flex:0 0 88px}
 }
-</style>
+.preset-row { flex-wrap: nowrap; align-items: center; gap: 8px; overflow-x: auto; }
+    </style>
 </head>
 <body>
 <div class="app">
@@ -663,6 +664,19 @@ input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;bac
           </label>
         </div>
 
+        <div class="card" id="presetBox">
+          <div class="card-title" data-i18n="preset.title">套餐（整套按键映射）</div>
+          <div class="row preset-row">
+            <select id="mapPreset" style="flex:2 1 200px;min-width:150px"></select>
+            <button class="btn" type="button" id="btnPresetLoad" data-i18n="preset.load">载入并使用</button>
+            <input type="text" id="mapPresetName" style="flex:1 1 140px;min-width:120px" data-i18n-placeholder="preset.namePh" placeholder="新套餐名称">
+            <button class="btn" type="button" id="btnPresetSaveAs" data-i18n="preset.saveAs">另存为新套餐</button>
+            <button class="btn" type="button" id="btnPresetUpdate" data-i18n="preset.update">覆盖保存到该套餐</button>
+            <button class="btn danger" type="button" id="btnPresetDelete" data-i18n="preset.delete">删除</button>
+          </div>
+          <div class="hint" data-i18n="preset.hint">内置套餐只读；「另存为」会复制当前全部按键映射。自定义套餐也能在「自动切换」的规则里选。</div>
+        </div>
+
         <div class="banner" style="margin-top:0">
           <span data-i18n-html="keys.riskHtml">⚠ <strong>按键映射靠"注入"实现</strong>：程序会往系统的蓝牙 HID 驱动宿主里注入一个模块（要 <strong>一次</strong>管理员权限，点过「一键优化」后不再弹）。它可能被 <b>杀软误报/隔离</b>；少数带内核反作弊的 <b>游戏</b> 可能起不来；<b>公司/学校电脑</b> 建议先问 IT。<strong>语音功能完全不需要这一项</strong>。详见 README「已知的限制与风险」。</span>
         </div>
@@ -745,23 +759,6 @@ input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;bac
               </div>
               <div class="mapping-hint" id="mapPanelHint"></div>
 
-              <div class="field" id="presetBox" style="margin-top:18px;border-top:1px solid var(--line,#e5e7eb);padding-top:14px">
-                <label data-i18n="preset.title">套餐（整套按键映射）</label>
-                <div class="row">
-                  <select id="mapPreset" style="flex:1"></select>
-                  <button class="btn" type="button" id="btnPresetLoad" data-i18n="preset.load">载入并使用</button>
-                </div>
-                <div class="row" style="margin-top:8px">
-                  <input type="text" id="mapPresetName" style="flex:1;width:0;min-width:0" data-i18n-placeholder="preset.namePh" placeholder="新套餐名称">
-                  <button class="btn" type="button" id="btnPresetSaveAs" data-i18n="preset.saveAs">另存为新套餐</button>
-                </div>
-                <div class="row" style="margin-top:8px">
-                  <span style="flex:1"></span>
-                  <button class="btn" type="button" id="btnPresetUpdate" data-i18n="preset.update">覆盖保存到该套餐</button>
-                  <button class="btn danger" type="button" id="btnPresetDelete" data-i18n="preset.delete">删除</button>
-                </div>
-                <div class="hint" data-i18n="preset.hint">内置套餐只读；「另存为」会复制当前全部按键映射。自定义套餐也能在「自动切换」的规则里选。</div>
-              </div>
             </div>
           </div>
         </div>
