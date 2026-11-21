@@ -520,6 +520,11 @@ class KeyTap(threading.Thread):
         self._av_hinted = False
         self.reports = 0
         self._held = set()          # 当前按住的 usage（过滤长按连发）
+        # 时延诊断：钩子时间戳 → 收到报文（latency）→ 执行完 SendInput（exec）→
+        # 相邻两条报文间隔（gap）。日志里每个按键都会带上这几个数，排查"反应慢"用。
+        self.last_timing = {}
+        self._timing_samples = []
+        self._last_report_at = 0.0
         self._script = None
         self._session = None
         self._lock = threading.Lock()
@@ -541,6 +546,28 @@ class KeyTap(threading.Thread):
                 self._script.post({"type": "block", "usages": usages})
             except Exception:
                 pass
+
+    def _record_timing(self, kid, latency_ms, exec_ms, gap_ms, at):
+        self.last_timing = {"key": kid, "latency_ms": latency_ms,
+                            "exec_ms": exec_ms, "gap_ms": gap_ms, "at": at}
+        if latency_ms is not None or exec_ms is not None:
+            self._timing_samples.append((latency_ms, exec_ms))
+            if len(self._timing_samples) > 50:
+                del self._timing_samples[:-50]
+
+    def timing_stats(self):
+        lat = [x for x, _ in self._timing_samples if x is not None]
+        ex = [y for _, y in self._timing_samples if y is not None]
+        last = {}
+        for k, v in (self.last_timing or {}).items():
+            last[k] = round(v, 2) if isinstance(v, (int, float)) else v
+        return {
+            "last": last,
+            "avg_latency_ms": round(sum(lat) / len(lat), 1) if lat else None,
+            "max_latency_ms": round(max(lat), 1) if lat else None,
+            "avg_exec_ms": round(sum(ex) / len(ex), 2) if ex else None,
+            "samples": len(self._timing_samples),
+        }
 
     def _emit(self, kind, payload=None):
         try:
@@ -796,7 +823,7 @@ class KeyTap(threading.Thread):
             self._emit("status", {"ready": True, "note": self.note})
             self._log("按键映射：就绪")
         elif kind == "report":
-            self._on_report(payload.get("raw") or "")
+            self._on_report(payload.get("raw") or "", payload.get("ts"))
         elif kind == "block_ack":
             self._log(f"按键映射：已屏蔽 {payload.get('count', 0)} 个键的原生动作")
         elif kind == "hb":
@@ -804,9 +831,19 @@ class KeyTap(threading.Thread):
         elif kind == "error":
             self._log(f"按键映射：{payload.get('message')}")
 
-    def _on_report(self, raw):
-        """raw 形如 '02 42 00'。"""
-        self.last_seen = time.time()
+    def _on_report(self, raw, ts=None):
+        """raw 形如 '02 42 00'；ts 是钩子侧 Date.now()（毫秒）。"""
+        t_recv = time.time()
+        gap_ms = None
+        if self._last_report_at:
+            gap_ms = max(0.0, (t_recv - self._last_report_at) * 1000.0)
+        self._last_report_at = t_recv
+        latency_ms = None
+        if isinstance(ts, (int, float)):
+            d = t_recv * 1000.0 - float(ts)
+            if 0.0 <= d <= 5000.0:      # 时钟明显不对就丢弃，不写垃圾数据
+                latency_ms = d
+        self.last_seen = t_recv
         if self.on_activity:
             try:
                 self.on_activity()
@@ -824,7 +861,7 @@ class KeyTap(threading.Thread):
 
         if usage == 0:                  # 空闲帧 = 全部松开
             for u in list(self._held):
-                self._release(u)
+                self._release(u, latency_ms, gap_ms)
             return
         if usage in self._held:
             return                      # 长按连发：只认第一下
@@ -832,26 +869,37 @@ class KeyTap(threading.Thread):
         kid = USAGE_TO_KEY.get(usage)
         if not kid:
             return
-        self._emit("key", {"id": kid, "down": True})
+        exec_ms = None
         m = self.mapping.get(kid)
         if m:
+            t0 = time.perf_counter()
             try:
                 self.player.down(m)
             except Exception as e:
                 self._log(f"按键映射：执行 {kid} 失败 {type(e).__name__}: {e}")
+            exec_ms = (time.perf_counter() - t0) * 1000.0
+        self._record_timing(kid, latency_ms, exec_ms, gap_ms, t_recv)
+        self._emit("key", {"id": kid, "down": True,
+                           "latency_ms": latency_ms, "gap_ms": gap_ms,
+                           "exec_ms": exec_ms})
 
-    def _release(self, usage):
+    def _release(self, usage, latency_ms=None, gap_ms=None):
         self._held.discard(usage)
         kid = USAGE_TO_KEY.get(usage)
         if not kid:
             return
-        self._emit("key", {"id": kid, "down": False})
+        exec_ms = None
         m = self.mapping.get(kid)
         if m:
+            t0 = time.perf_counter()
             try:
                 self.player.up(m)
             except Exception:
                 pass
+            exec_ms = (time.perf_counter() - t0) * 1000.0
+        self._emit("key", {"id": kid, "down": False,
+                           "latency_ms": latency_ms, "gap_ms": gap_ms,
+                           "exec_ms": exec_ms})
 
     def stop(self):
         self.stop_flag.set()

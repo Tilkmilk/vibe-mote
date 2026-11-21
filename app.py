@@ -1895,15 +1895,30 @@ class Roles:
             # 按键事件必须同时写一行日志：用户「按了半天没反应」时，
             # 只有日志能区分「根本没读到」和「读到了但没映射」。
             if down:
+                # 时延诊断：钩子 → 处理 → SendInput 花了多久、距上一次报文多久。
+                # 正常应该在几十毫秒内；如果这里出现几百毫秒/秒级，问题不在"手感"。
+                extra = ""
+                try:
+                    bits = []
+                    if p.get("latency_ms") is not None:
+                        bits.append(f"传输 {float(p['latency_ms']):.0f}ms")
+                    if p.get("exec_ms") is not None:
+                        bits.append(f"执行 {float(p['exec_ms']):.1f}ms")
+                    if p.get("gap_ms") is not None:
+                        bits.append(f"距上次 {float(p['gap_ms']):.0f}ms")
+                    if bits:
+                        extra = "（" + " · ".join(bits) + "）"
+                except (TypeError, ValueError):
+                    pass
                 label = REMOTE_LABELS.get(kid, str(kid))
                 if kid == "voice":
                     spec = self.cfg.get("voice") or {}
                     how = "按一下" if spec.get("mode") == "tap" else "按住"
-                    BUS.log(f"[按键] 语音 → {how} {spec.get('key')}")
+                    BUS.log(f"[按键] 语音 → {how} {spec.get('key')}" + extra)
                 else:
                     m = (self.cfg.get("keys") or {}).get(kid)
                     BUS.log(f"[按键] {label} → "
-                            + (describe_mapping(m) if m else "（未映射）"))
+                            + (describe_mapping(m) if m else "（未映射）") + extra)
         elif kind == "status":
             BUS.push({"ev": "state", "state": state_snapshot(self.cfg, self)})
 
@@ -2166,6 +2181,7 @@ def state_snapshot(cfg, roles=None):
                                        if not d["ok"]
                                        else i18n.L("未启动", "Not started"))),
             "blocked_count": len(getattr(k, "blocked_usages", []) or []),
+            "timing": (k.timing_stats() if k else None),
         },
         "auto_profile": {
             "enabled": bool((cfg.get("auto_profile") or {}).get("enabled")),
