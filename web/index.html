@@ -633,6 +633,25 @@ input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;bac
           <div class="result" id="profResult" hidden></div>
         </div>
 
+        <div class="card" id="autoCard">
+          <div class="card-title" data-i18n="auto.title">按前台程序自动切换套餐（可选）</div>
+          <label class="switch">
+            <input type="checkbox" id="autoEnabled">
+            <span data-i18n="auto.enable">启用：前台程序变化时自动套用对应套餐</span>
+          </label>
+          <div class="hint" data-i18n="auto.tip">按进程文件名匹配（不区分大小写），例如 Code.exe、WindowsTerminal.exe。只切换按键映射，语音键不动。</div>
+          <div id="autoRules"></div>
+          <div class="row" style="margin-top:8px;flex-wrap:wrap;gap:8px">
+            <button class="btn" type="button" id="btnAutoAdd" data-i18n="auto.add">添加当前前台程序</button>
+            <button class="btn" type="button" id="btnAutoAddManual" data-i18n="auto.addManual">手动添加一条</button>
+            <label for="autoFallback" data-i18n="auto.fallback">未匹配时</label>
+            <select id="autoFallback"></select>
+            <button class="btn primary" type="button" id="btnAutoSave" data-i18n="auto.save">保存自动切换</button>
+          </div>
+          <div class="hint" id="autoNow"></div>
+          <div class="result" id="autoResult" hidden></div>
+        </div>
+
         <div class="toolbar">
           <button class="btn" type="button" id="btnRecommended" data-i18n="keys.recommended">恢复推荐配置</button>
           <button class="btn danger" type="button" id="btnClearAll" data-i18n="keys.clearAll">清空映射</button>
@@ -1078,6 +1097,24 @@ input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;bac
       'keys.app': '目标应用',
       'keys.ime': '输入法（决定语音键）',
       'keys.applyProfile': '应用这套预设',
+      'auto.title': '按前台程序自动切换套餐（可选）',
+      'auto.enable': '启用：前台程序变化时自动套用对应套餐',
+      'auto.tip': '按进程文件名匹配（不区分大小写），例如 Code.exe、WindowsTerminal.exe。只切换按键映射，语音键不动。',
+      'auto.add': '添加当前前台程序',
+      'auto.addManual': '手动添加一条',
+      'auto.fallback': '未匹配时',
+      'auto.save': '保存自动切换',
+      'auto.keep': '保持不变（推荐）',
+      'auto.exePh': '进程文件名，如 Code.exe',
+      'auto.remove': '删除这条规则',
+      'auto.empty': '还没有规则。点「添加当前前台程序」最快。',
+      'auto.saved': '自动切换设置已保存',
+      'auto.saveFail': '保存失败',
+      'auto.dup': '已经有 {0} 这条规则了',
+      'auto.probeFail': '读不到前台程序（先切到目标程序再点）',
+      'auto.nowFg': '前台：{0}',
+      'auto.nowActive': '当前套餐：{0}',
+      'auto.nowNoRule': '当前套餐：未匹配（保持不变）',
       'keys.recommended': '恢复推荐配置',
       'keys.clearAll': '清空映射',
       'keys.riskHtml': '⚠ <strong>按键映射靠"注入"实现</strong>：程序会往系统的蓝牙 HID 驱动宿主里注入一个模块（要 <strong>一次</strong>管理员权限，点过「一键优化」后不再弹）。它可能被 <b>杀软误报/隔离</b>；少数带内核反作弊的 <b>游戏</b> 可能起不来；<b>公司/学校电脑</b> 建议先问 IT。<strong>语音功能完全不需要这一项</strong>。详见 README「已知的限制与风险」。',
@@ -1454,6 +1491,24 @@ input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;bac
       'keys.app': 'Target app',
       'keys.ime': 'IME (decides the voice key)',
       'keys.applyProfile': 'Apply this profile',
+      'auto.title': 'Switch presets by foreground app (optional)',
+      'auto.enable': 'Enable: apply the matching preset when the foreground app changes',
+      'auto.tip': 'Matched by process file name (case-insensitive), e.g. Code.exe, WindowsTerminal.exe. Only key mappings change; the voice key stays as is.',
+      'auto.add': 'Add current foreground app',
+      'auto.addManual': 'Add a rule manually',
+      'auto.fallback': 'When unmatched',
+      'auto.save': 'Save auto-switch',
+      'auto.keep': 'Keep current (recommended)',
+      'auto.exePh': 'Process name, e.g. Code.exe',
+      'auto.remove': 'Remove this rule',
+      'auto.empty': 'No rules yet. “Add current foreground app” is the quickest start.',
+      'auto.saved': 'Auto-switch settings saved',
+      'auto.saveFail': 'Save failed',
+      'auto.dup': 'A rule for {0} already exists',
+      'auto.probeFail': 'Could not read the foreground app (switch to it first, then click)',
+      'auto.nowFg': 'Foreground: {0}',
+      'auto.nowActive': 'Active preset: {0}',
+      'auto.nowNoRule': 'Active preset: unmatched (unchanged)',
       'keys.recommended': 'Restore recommended',
       'keys.clearAll': 'Clear all mappings',
       'keys.riskHtml': '⚠ <strong>Key mapping works by injection</strong>: the program injects a module into the system\'s Bluetooth HID driver host (needs <strong>one</strong> administrator approval; after "One-click optimization" it never prompts again). It may be <b>flagged or silently quarantined by antivirus</b>; a few games with kernel anti-cheat may refuse to start; on a <b>work/school PC</b> ask IT first. <strong>Voice needs none of this.</strong> See "Known limits and risks" in the README.',
@@ -2054,6 +2109,8 @@ input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;bac
     renderSetup(s);
     renderQwen(s);
     renderCable(s.cable);
+
+    renderAutoNow(s.auto_profile);
 
     if (running) setConn('on', 'conn.connected');
     else setConn('idle', 'conn.idle');
@@ -3147,6 +3204,7 @@ input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;bac
         profChoice.ime = si.value; renderProfilePreview();
       });
       renderProfilePreview();
+      loadAutoProfile();
     });
   }
 
@@ -3199,6 +3257,134 @@ input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;bac
         }
         if (r && !r.ok) toast(r.msg || t('toast.applyFail'), true);
       });
+  }
+
+  /* ==================== 按前台程序自动切换 ==================== */
+  var AUTO = { enabled: false, fallback: '', rules: {} };
+
+  function autoApps() { return (PROFILES && PROFILES.apps) || []; }
+
+  function autoAppName(id) {
+    var a = autoApps().filter(function (x) { return x.id === id; })[0];
+    return a ? a.name : id;
+  }
+
+  function loadAutoProfile() {
+    return api('/api/config').then(function (c) {
+      if (c && c.auto_profile && typeof c.auto_profile === 'object') {
+        AUTO = {
+          enabled: !!c.auto_profile.enabled,
+          fallback: c.auto_profile.fallback || '',
+          rules: (c.auto_profile.rules && typeof c.auto_profile.rules === 'object')
+                   ? c.auto_profile.rules : {}
+        };
+      }
+      renderAutoUI();
+    });
+  }
+
+  function autoRuleRow(exe, appId) {
+    var row = el('div');
+    row.className = 'auto-rule';
+    row.style.cssText = 'display:flex;gap:8px;align-items:center;margin-top:6px';
+    var inp = document.createElement('input');
+    inp.type = 'text';
+    inp.className = 'inline-input';
+    inp.style.cssText = 'flex:0 0 240px';
+    inp.value = exe || '';
+    inp.placeholder = t('auto.exePh');
+    inp.dataset.exe = '1';
+    var sel = document.createElement('select');
+    autoApps().forEach(function (a) {
+      var o = document.createElement('option');
+      o.value = a.id; o.textContent = a.name; sel.appendChild(o);
+    });
+    sel.value = appId || (autoApps()[0] && autoApps()[0].id) || '';
+    sel.dataset.app = '1';
+    var del = el('button', 'btn danger', '×');
+    del.type = 'button';
+    del.title = t('auto.remove');
+    del.onclick = function () { row.remove(); };
+    row.appendChild(inp); row.appendChild(sel); row.appendChild(del);
+    return row;
+  }
+
+  function collectAutoRules() {
+    var out = {};
+    $$('#autoRules .auto-rule').forEach(function (row) {
+      var inp = row.querySelector('input[data-exe]');
+      var sel = row.querySelector('select[data-app]');
+      if (!inp || !sel) return;
+      var exe = (inp.value || '').trim().toLowerCase();
+      if (!exe) return;
+      out[exe] = sel.value;
+    });
+    return out;
+  }
+
+  function renderAutoUI() {
+    var box = $('#autoRules');
+    if (!box) return;
+    box.innerHTML = '';
+    var exes = Object.keys(AUTO.rules || {}).sort();
+    exes.forEach(function (exe) { box.appendChild(autoRuleRow(exe, AUTO.rules[exe])); });
+    if (!exes.length) box.appendChild(el('div', 'hint', t('auto.empty')));
+    var fb = $('#autoFallback');
+    fb.innerHTML = '';
+    var keep = document.createElement('option');
+    keep.value = ''; keep.textContent = t('auto.keep');
+    fb.appendChild(keep);
+    autoApps().forEach(function (a) {
+      var o = document.createElement('option');
+      o.value = a.id; o.textContent = a.name; fb.appendChild(o);
+    });
+    fb.value = AUTO.fallback || '';
+    $('#autoEnabled').checked = !!AUTO.enabled;
+  }
+
+  function addAutoRuleRow(exe, appId) {
+    var box = $('#autoRules');
+    var empty = box.querySelector('.hint');
+    if (empty) empty.remove();
+    box.appendChild(autoRuleRow(exe, appId));
+  }
+
+  function addAutoRule(exe, appId) {
+    exe = (exe || '').trim().toLowerCase();
+    if (!exe) { addAutoRuleRow('', appId); return true; }   // 手动添加空行
+    if (collectAutoRules()[exe]) return false;
+    addAutoRuleRow(exe, appId || (autoApps()[0] && autoApps()[0].id) || '');
+    return true;
+  }
+
+  function saveAutoProfile() {
+    var ap = {
+      enabled: $('#autoEnabled').checked,
+      fallback: $('#autoFallback').value || '',
+      rules: collectAutoRules()
+    };
+    return api('/api/config', { method: 'POST', body: JSON.stringify({ auto_profile: ap }) })
+      .then(function (r) {
+        if (r && r.ok) {
+          AUTO = ap;
+          toast(t('auto.saved'));
+          loadConfig();
+          renderAutoUI();
+        } else {
+          toast((r && r.msg) || t('auto.saveFail'), true);
+        }
+      });
+  }
+
+  function renderAutoNow(ap) {
+    var box = $('#autoNow');
+    if (!box) return;
+    if (!ap || !ap.enabled) { box.textContent = ''; return; }
+    var parts = [];
+    if (ap.foreground) parts.push(t('auto.nowFg', ap.foreground));
+    if (ap.active) parts.push(t('auto.nowActive', autoAppName(ap.active)));
+    else parts.push(t('auto.nowNoRule'));
+    box.textContent = parts.join(' · ');
   }
 
   /* ==================== 安装类动作 ====================
@@ -3316,6 +3502,18 @@ input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;bac
     $('#btnDelRecommend').addEventListener('click', function () { setDelItems('rec'); });
     $('#btnDelAll').addEventListener('click', function () { setDelItems('all'); });
     $('#btnApplyProfile').addEventListener('click', applyProfile);
+    $('#btnAutoAdd').addEventListener('click', function () {
+      api('/api/action', { method: 'POST', body: JSON.stringify({ action: 'probe-foreground' }) })
+        .then(function (r) {
+          if (r && r.ok && r.exe) {
+            if (!addAutoRule(r.exe)) toast(t('auto.dup', r.exe));
+          } else {
+            toast(t('auto.probeFail'), true);
+          }
+        });
+    });
+    $('#btnAutoAddManual').addEventListener('click', function () { addAutoRule('', ''); });
+    $('#btnAutoSave').addEventListener('click', saveAutoProfile);
     $('#btnRestartApp').addEventListener('click', function () {
       doAction({ action: 'restart-app' }, $('#checkBox'), t('act.restartApp'))
         .then(function (r) { if (r && r.ok) toast(r.msg || t('toast.restarting')); });

@@ -50,7 +50,7 @@ if HERE not in sys.path:
 import i18n  # noqa: E402  （必须在 sys.path 之后就位）
 
 APP_NAME = "VibeMote"
-APP_VERSION = "1.1.3"          # 报 bug 时请带上这个版本号（界面「设置 → 界面」能看到）
+APP_VERSION = "1.2.0"          # 报 bug 时请带上这个版本号（界面「设置 → 界面」能看到）
 WEB = os.path.join(HERE, "web")
 CONFIG = os.path.join(HERE, "config.json")
 REQUIREMENTS = os.path.join(HERE, "requirements.txt")
@@ -100,6 +100,8 @@ DEFAULT_CONFIG = {
     "voice": {"mode": "hold", "key": "RALT", "mods": []},
     "audio": {"gain": 4.0, "agc": True, "relay": True},
     "keys": RECOMMENDED,
+    # 按前台应用自动切换套餐：exe（小写文件名）→ 预设 app id
+    "auto_profile": {"enabled": False, "fallback": "", "rules": {}},
 }
 TYPES = ("key", "hold", "combo", "holdcombo", "mouse", "holdmouse", "text")
 
@@ -251,6 +253,9 @@ def _merge_defaults(cfg):
     audio = dict(DEFAULT_CONFIG["audio"])
     audio.update(cfg.get("audio") or {})
     out["audio"] = audio
+    ap = dict(DEFAULT_CONFIG["auto_profile"])
+    ap.update(cfg.get("auto_profile") or {})
+    out["auto_profile"] = ap
     keys_map = cfg.get("keys")
     out["keys"] = dict(keys_map) if isinstance(keys_map, dict) else dict(RECOMMENDED)
     return out
@@ -328,6 +333,26 @@ def save_config(cfg):
     clean["keys"] = keys_map
     if voice_alias:
         clean["voice"] = voice_alias
+    # 自动套餐：exe（只留文件名、小写）→ 预设 app id。无效的 app id 直接丢掉，
+    # 免得界面/手写出一个不存在的套餐名，运行时无从应用。
+    ap = cfg.get("auto_profile") or {}
+    try:
+        import profiles as _prof
+        _valid_apps = set(_prof.APPS.keys())
+    except Exception:
+        _valid_apps = {"workbuddy", "codex", "claude", "generic"}
+    _rules = {}
+    for _exe, _app in (ap.get("rules") or {}).items():
+        _exe_s = os.path.basename(str(_exe or "")).strip().lower()
+        _app_s = str(_app or "").strip()
+        if _exe_s and _app_s in _valid_apps:
+            _rules[_exe_s] = _app_s
+    _fb = str(ap.get("fallback") or "").strip()
+    clean["auto_profile"] = {
+        "enabled": bool(ap.get("enabled")),
+        "fallback": _fb if _fb in _valid_apps else "",
+        "rules": _rules,
+    }
     # ★ 原子写：读的人不会读到半个文件。两处细节别改回去：
     #   · 临时文件名带 pid —— i18n.save_to_config() 也写 config.json，
     #     原来两边共用 `config.json.tmp`，并发时会互相 replace 掉，
@@ -1804,6 +1829,14 @@ class Roles:
         self.voice = None
         self.keytap = None
         self.lock = threading.Lock()
+        # 按前台应用自动切换套餐（见 _auto_loop）。这三个字段也暴露在 /api/state 里，
+        # 界面据此显示"现在前台是什么、套用了哪套"。
+        self.auto_foreground = ""
+        self.auto_active = ""
+        self._auto_last = None          # (exe, app_id) —— 上次真正应用过的组合
+        self._auto_was_enabled = False
+        self._auto_stop = threading.Event()
+        self._auto_thread = None
 
     def _on_event(self, kind, payload=None):
         if kind == "log":
@@ -1867,6 +1900,7 @@ class Roles:
                 self.keytap.start()
         BUS.log(i18n.L("客户端已启动", "Client started"))
         BUS.push({"ev": "state", "state": state_snapshot(self.cfg, self)})
+        self._ensure_auto_thread()
         return True, i18n.L("已启动", "Started")
 
     def _ensure_qwen_flag(self):
@@ -1959,6 +1993,84 @@ class Roles:
     def running(self):
         return self.voice is not None
 
+    # ---------- 按前台应用自动切换套餐 ----------
+    def _ensure_auto_thread(self):
+        if self._auto_thread and self._auto_thread.is_alive():
+            return
+        self._auto_stop.clear()
+        self._auto_thread = threading.Thread(target=self._auto_loop, daemon=True,
+                                             name="AutoProfile")
+        self._auto_thread.start()
+
+    def _auto_loop(self):
+        """每 1 秒看一眼前台窗口，命中规则就套用对应套餐。
+
+        只在**组合变化**时动手（exe + app_id 与上次相同就跳过），避免每秒重写配置。
+        只改按键映射，不动语音键 —— 输入法是整机一套，不该跟着窗口跳。
+        """
+        while not self._auto_stop.is_set():
+            time.sleep(1.0)
+            try:
+                self._auto_tick()
+            except Exception:
+                pass
+
+    def _auto_tick(self):
+        cfg = self.cfg
+        ap = cfg.get("auto_profile") or {}
+        enabled = bool(ap.get("enabled"))
+        if self.keytap is None:
+            self._auto_was_enabled = enabled
+            return
+        if not enabled:
+            if self._auto_was_enabled:
+                BUS.log(i18n.L("自动套餐：已关闭（当前按键映射保持不变）",
+                               "Auto profile: disabled (current key mapping is kept)"))
+                self.auto_active = ""
+                self._auto_last = None
+            self._auto_was_enabled = False
+            self.auto_foreground = ""
+            return
+        self._auto_was_enabled = True
+        exe = foreground_exe()
+        self.auto_foreground = exe
+        rules = {str(k).lower(): str(v) for k, v in (ap.get("rules") or {}).items()}
+        app_id = (rules.get(exe.lower()) if exe else "") or str(ap.get("fallback") or "")
+        if not app_id:
+            self.auto_active = ""
+            self._auto_last = None
+            return
+        key = (exe.lower(), app_id)
+        if key == self._auto_last:
+            return
+        self._auto_last = key
+        self._apply_auto_profile(app_id, exe)
+
+    def _apply_auto_profile(self, app_id, exe):
+        import profiles
+        app = profiles.APPS.get(app_id)
+        if app is None:
+            return
+        ime_id = str((self.cfg.get("profile") or {}).get("ime") or profiles.DEFAULT_IME)
+        keys, _voice = profiles.build(app_id, ime_id)
+        # 和「应用预设」同一语义：落盘 + 热更新，保证界面显示的、配置里存的、
+        # 实际生效的是同一套（否则按键页会显示一套、按下去是另一套）。
+        merged = load_config()
+        merged["keys"] = keys
+        prof = dict(merged.get("profile") or {})
+        prof["app"] = app_id
+        merged["profile"] = prof
+        clean = save_config(merged)
+        self.cfg = _merge_defaults(clean)
+        self.keytap.set_mapping(self.cfg.get("keys") or {})
+        self.auto_active = app_id
+        name = i18n.pick(app.get("name"))
+        BUS.log(i18n.L(
+            f"自动套餐：前台 {exe or '未知程序'} → 应用「{name}」（{len(keys)} 个按键）",
+            f"Auto profile: foreground {exe or 'unknown program'} → applied “{name}” "
+            f"({len(keys)} keys)"))
+        BUS.push({"ev": "state", "state": state_snapshot(self.cfg, self)})
+
 
 ROLES: Roles | None = None
 
@@ -1999,6 +2111,13 @@ def state_snapshot(cfg, roles=None):
                                        if not d["ok"]
                                        else i18n.L("未启动", "Not started"))),
             "blocked_count": len(getattr(k, "blocked_usages", []) or []),
+        },
+        "auto_profile": {
+            "enabled": bool((cfg.get("auto_profile") or {}).get("enabled")),
+            "fallback": str((cfg.get("auto_profile") or {}).get("fallback") or ""),
+            "rules": dict((cfg.get("auto_profile") or {}).get("rules") or {}),
+            "foreground": getattr(roles, "auto_foreground", ""),
+            "active": getattr(roles, "auto_active", ""),
         },
         "deps": d,
         "autostart": autostart_state(),
@@ -2549,7 +2668,9 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"remote_addr": cfg["remote_addr"],
                                "profile": cfg["profile"],
                                "voice": cfg["voice"], "audio": cfg["audio"],
-                               "keys": cfg["keys"]})
+                               "keys": cfg["keys"],
+                               "auto_profile": cfg.get("auto_profile")
+                               or DEFAULT_CONFIG["auto_profile"]})
         if path == "/api/profiles":
             import profiles
             return self._json(profiles.catalog())
@@ -2680,6 +2801,8 @@ class Handler(BaseHTTPRequestHandler):
                 merged["audio"] = body["audio"]
             if "remote_addr" in body:
                 merged["remote_addr"] = body["remote_addr"]
+            if "auto_profile" in body and isinstance(body["auto_profile"], dict):
+                merged["auto_profile"] = body["auto_profile"]
             clean = save_config(merged)
             if ROLES:
                 ROLES.apply_config(_merge_defaults(clean))
@@ -2693,6 +2816,9 @@ class Handler(BaseHTTPRequestHandler):
     def _action(self, body):
         act = (body or {}).get("action")
         cfg = load_config()
+        if act == "probe-foreground":
+            # 界面「添加当前前台程序」用：返回前台窗口的 exe 文件名。
+            return self._json({"ok": True, "exe": foreground_exe()})
         if act == "apply-profile":
             import profiles
             app_id = str((body or {}).get("app") or "").strip()
@@ -3089,6 +3215,51 @@ def our_instances(procs=None):
 
 
 _LOCK_HANDLE = None     # Windows 命名互斥体句柄（单实例锁），进程退出时系统自动释放
+
+
+def foreground_exe():
+    """当前**前台窗口**所属进程的文件名（如 ``Code.exe``）；拿不到返回 ""。
+
+    只用 Win32（不用 WMI）：每秒轮询一次，必须够快、够安静。
+    GetForegroundWindow → 进程 ID → QueryFullProcessImageName（PROCESS_QUERY_LIMITED_INFORMATION，
+    普通权限也能读自身会话内的进程名）。
+    """
+    if os.name != "nt":
+        return ""
+    try:
+        import ctypes
+        from ctypes import wintypes
+        user32 = ctypes.WinDLL("user32", use_last_error=True)
+        k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        user32.GetForegroundWindow.restype = wintypes.HWND
+        user32.GetWindowThreadProcessId.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.DWORD)]
+        user32.GetWindowThreadProcessId.restype = wintypes.DWORD
+        k32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+        k32.OpenProcess.restype = wintypes.HANDLE
+        k32.QueryFullProcessImageNameW.argtypes = [wintypes.HANDLE, wintypes.DWORD,
+                                                   wintypes.LPWSTR, ctypes.POINTER(wintypes.DWORD)]
+        k32.QueryFullProcessImageNameW.restype = wintypes.BOOL
+        k32.CloseHandle.argtypes = [wintypes.HANDLE]
+        hwnd = user32.GetForegroundWindow()
+        if not hwnd:
+            return ""
+        pid = wintypes.DWORD()
+        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+        if not pid.value:
+            return ""
+        h = k32.OpenProcess(0x1000, False, pid.value)   # PROCESS_QUERY_LIMITED_INFORMATION
+        if not h:
+            return ""
+        try:
+            buf = ctypes.create_unicode_buffer(1024)
+            size = wintypes.DWORD(len(buf))
+            if not k32.QueryFullProcessImageNameW(h, 0, buf, ctypes.byref(size)):
+                return ""
+            return os.path.basename(buf.value)
+        finally:
+            k32.CloseHandle(h)
+    except Exception:
+        return ""
 
 
 def take_lock():
