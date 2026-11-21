@@ -994,6 +994,7 @@ input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;bac
       'st.voice': '语音通道',
       'st.keys': '按键通道',
       'st.bt': '蓝牙连接',
+      'st.battery': '电量',
       'st.autostart': '开机自启',
       'st.on': '已开启',
       'st.off': '未开启',
@@ -1369,6 +1370,7 @@ input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;bac
       'st.voice': 'Voice channel',
       'st.keys': 'Key channel',
       'st.bt': 'Bluetooth',
+      'st.battery': 'Battery',
       'st.autostart': 'Launch at startup',
       'st.on': 'On',
       'st.off': 'Off',
@@ -2022,6 +2024,14 @@ input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;bac
     btv.appendChild(dot(running && connected ? 'ok' : (running ? 'warn' : 'bad')));
     btv.appendChild(el('span', null, connected ? t('st.connected') : t('st.disconnected')));
     rows.appendChild(srow(t('st.bt'), btv));
+
+    // 电量：连接时从 Battery Service(0x2A19) 读一次；读不到就不显示这一行。
+    if (typeof voice.battery === 'number') {
+      var batv = el('span');
+      batv.appendChild(dot(voice.battery > 20 ? 'ok' : (voice.battery > 5 ? 'warn' : 'bad')));
+      batv.appendChild(el('span', null, voice.battery + '%'));
+      rows.appendChild(srow(t('st.battery'), batv));
+    }
 
     rows.appendChild(srow(t('st.autostart'), s.autostart ? t('st.on') : t('st.off')));
     // Frida 残留 = UAC 会不会反复弹的根源。不显示的话，用户只会看到"又弹框了"。

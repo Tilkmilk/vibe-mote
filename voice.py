@@ -31,6 +31,8 @@ ADDR_DEFAULT = ""
 ATVV_CTL = "ab5e0002"
 ATVV_AUDIO = "ab5e0003"
 ATVV_STATUS = "ab5e0004"
+# 电量：Battery Service (180F) 的特征 0x2A19，值是一个字节的百分比。
+BATTERY_LEVEL = "00002a19"
 
 SR_IN, SR_OUT = 16000, 48000
 
@@ -849,6 +851,8 @@ class VoiceRole(threading.Thread):
         self.frames = 0
         self.misses = 0
         self._ever_ok = False               # 曾经成功拿到过 ATVV（会话自愈的前提）
+        self.battery = None                 # 遥控器电量（0-100），连接时读一次 Battery Level
+        self._battery_warned = False        # 低电量提醒只写一次，别刷日志
         self._session_frames = 0
         self._active = False
         self._cable_warned = False
@@ -1339,6 +1343,29 @@ class VoiceRole(threading.Thread):
                 if str(c.uuid).lower().startswith(prefix):
                     return c
             return None
+
+        # 电量：在 ATVV 校验**之前**读。理由：服务表残缺（只剩 4 个通用服务）时 180F/0x2A19
+        # 往往还在，先读出来能少一份疑问；读不到也不影响语音。
+        batt = find(BATTERY_LEVEL)
+        if batt is not None:
+            try:
+                raw = await asyncio.wait_for(client.read_gatt_char(batt), 3.0)
+                pct = int(raw[0]) if raw else None
+                if pct is not None and 0 <= pct <= 100:
+                    self.battery = pct
+                    self._log(i18n.L(f"语音：遥控器电量 {pct}%",
+                                     f"Voice: remote battery {pct}%"))
+                    if pct <= 20 and not self._battery_warned:
+                        self._battery_warned = True
+                        self._log(i18n.L(
+                            f"语音：电量偏低（{pct}%）—— 建议换电池；换电池后如果语音失效，"
+                            f"连续 3 次失败会自动重启恢复。",
+                            f"Voice: low battery ({pct}%) — replace it soon. If voice stops "
+                            f"working after the swap, three failed connects will auto-restart "
+                            f"the client."))
+                    self._emit("status", {})   # 让界面立刻刷新出电量
+            except Exception as e:
+                self._log(f"语音：读电量失败（{type(e).__name__}: {e}）")
 
         audio, status = find(ATVV_AUDIO), find(ATVV_STATUS)
         ctl = find(ATVV_CTL)
