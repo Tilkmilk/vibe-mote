@@ -750,12 +750,15 @@ input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;bac
                 <div class="row">
                   <select id="mapPreset" style="flex:1"></select>
                   <button class="btn" type="button" id="btnPresetLoad" data-i18n="preset.load">载入并使用</button>
-                  <button class="btn danger" type="button" id="btnPresetDelete" data-i18n="preset.delete">删除</button>
                 </div>
                 <div class="row" style="margin-top:8px">
-                  <input type="text" id="mapPresetName" class="inline-input" style="flex:1" data-i18n-placeholder="preset.namePh" placeholder="新套餐名称">
+                  <input type="text" id="mapPresetName" style="flex:1;width:0;min-width:0" data-i18n-placeholder="preset.namePh" placeholder="新套餐名称">
                   <button class="btn" type="button" id="btnPresetSaveAs" data-i18n="preset.saveAs">另存为新套餐</button>
+                </div>
+                <div class="row" style="margin-top:8px">
+                  <span style="flex:1"></span>
                   <button class="btn" type="button" id="btnPresetUpdate" data-i18n="preset.update">覆盖保存到该套餐</button>
+                  <button class="btn danger" type="button" id="btnPresetDelete" data-i18n="preset.delete">删除</button>
                 </div>
                 <div class="hint" data-i18n="preset.hint">内置套餐只读；「另存为」会复制当前全部按键映射。自定义套餐也能在「自动切换」的规则里选。</div>
               </div>
@@ -1185,7 +1188,8 @@ input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;bac
       'preset.nameNeeded': '先给套餐起个名字',
       'preset.loaded': '已载入「{0}」',
       'preset.empty': '这套套餐是空的，先编辑几个按键再保存',
-      'preset.deleteConfirm': '删除自定义套餐「{0}」？',
+      'preset.deleteArmed': '再点一次确认删除',
+      'preset.deleteConfirm': '再点一次「删除」确认删除自定义套餐「{0}」',
       'map.target': '目标键',
       'map.capturePh': '点右侧按钮捕获',
       'map.capture': '按键捕获',
@@ -1597,7 +1601,8 @@ input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;bac
       'preset.nameNeeded': 'Give the preset a name first',
       'preset.loaded': 'Loaded “{0}”',
       'preset.empty': 'This preset is empty — edit some keys and save it first',
-      'preset.deleteConfirm': 'Delete custom preset “{0}”?',
+      'preset.deleteArmed': 'Click again to confirm',
+      'preset.deleteConfirm': 'Click Delete again to remove custom preset “{0}”',
       'map.target': 'Target key',
       'map.capturePh': 'Click the button on the right to capture',
       'map.capture': 'Capture key',
@@ -3373,6 +3378,9 @@ input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;bac
     var upd = $('#btnPresetUpdate'), del = $('#btnPresetDelete');
     if (upd) upd.disabled = !isCustom;
     if (del) del.disabled = !isCustom;
+    // 换了套餐就取消"待确认删除"状态，免得误删别的一套
+    presetDeleteArmed = null;
+    if (del) { del.textContent = t('preset.delete'); del.classList.remove('armed'); }
   }
 
   function loadPreset() {
@@ -3408,11 +3416,30 @@ input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;bac
       });
   }
 
+  var presetDeleteArmed = null;     // 二次确认：第一次点只"上膛"，4 秒内再点才删
+
   function deletePreset() {
     var p = currentPreset();
     if (!p || p.value.indexOf('custom:') !== 0) return;
     var name = p.value.slice(7);
-    if (!confirm(t('preset.deleteConfirm', name))) return;
+    var btn = $('#btnPresetDelete');
+    if (presetDeleteArmed !== name) {
+      presetDeleteArmed = name;
+      btn.textContent = t('preset.deleteArmed');
+      btn.classList.add('armed');
+      toast(t('preset.deleteConfirm', name), true);
+      setTimeout(function () {
+        if (presetDeleteArmed === name) {
+          presetDeleteArmed = null;
+          btn.textContent = t('preset.delete');
+          btn.classList.remove('armed');
+        }
+      }, 6000);
+      return;
+    }
+    presetDeleteArmed = null;
+    btn.textContent = t('preset.delete');
+    btn.classList.remove('armed');
     doAction({ action: 'delete-custom-profile', name: name })
       .then(function (r) {
         if (r && r.ok) loadProfiles();
