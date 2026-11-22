@@ -31,6 +31,8 @@ ADDR_DEFAULT = ""
 ATVV_CTL = "ab5e0002"
 ATVV_AUDIO = "ab5e0003"
 ATVV_STATUS = "ab5e0004"
+# 电量：Battery Service (180F) 的特征 0x2A19，值是一个字节的百分比。
+BATTERY_LEVEL = "00002a19"
 
 SR_IN, SR_OUT = 16000, 48000
 
@@ -127,6 +129,7 @@ def _cable_naming_hint(en=False):
 
 
 UNSTICK_COOLDOWN = 600.0        # 自动解卡最短间隔（秒）：别把用户蓝牙反复关开
+AUTO_HEAL_COOLDOWN = 600.0      # 会话自愈（重启客户端）最短间隔（秒）
 
 
 async def unstick_bluetooth():
@@ -823,9 +826,14 @@ class VoiceRole(threading.Thread):
     """独立线程里跑一个 asyncio 事件循环，保持 ATVV 长连接。"""
 
     def __init__(self, on_event, addr=ADDR_DEFAULT, audio=None, voice_spec=None,
-                 relay=True):
+                 relay=True, on_auto_heal=None, just_healed=False):
         super().__init__(daemon=True, name="VoiceRole")
         self.on_event = on_event
+        self.on_auto_heal = on_auto_heal    # 会话坏了 → 由外层把整个客户端重启
+        # 本进程是「会话自愈」刚拉起来的（见 app.restart_client / HEALED_MARK）：
+        # 刚重启的头几次枚举常常仍缺 ATVV（蓝牙链路还没彻底回过神），别急着下
+        # "遥控器没有语音服务"的结论 —— 真机上 16 秒后就好了。
+        self._just_healed = bool(just_healed)
         self.addr = addr
         cfg = dict(audio or {})
         self.gain = float(cfg.get("gain", 4.0))
@@ -842,6 +850,9 @@ class VoiceRole(threading.Thread):
         self.sessions = 0
         self.frames = 0
         self.misses = 0
+        self._ever_ok = False               # 曾经成功拿到过 ATVV（会话自愈的前提）
+        self.battery = None                 # 遥控器电量（0-100），连接时读一次 Battery Level
+        self._battery_warned = False        # 低电量提醒只写一次，别刷日志
         self._session_frames = 0
         self._active = False
         self._cable_warned = False
@@ -906,6 +917,52 @@ class VoiceRole(threading.Thread):
                              f"Voice: ⚠ auto-unstick could not turn Bluetooth back on ({detail})"))
         self._poke.set()                    # 立刻再试一次连接
 
+    def _maybe_auto_heal(self, n_services):
+        """连得上、但服务表里没有 ATVV → **会话自愈**：重启整个客户端。
+
+        和「自动解卡」（_maybe_unstick，关开蓝牙电台）是两条不同的故障：
+          · 扫不到广播 = 系统 HID 攥着那唯一一条 BLE 连接 → 关开电台能拆掉；
+          · 扫得到、也连得上，但枚举到的服务只剩 1800/1801/180a/180f
+            （通用访问/通用属性/设备信息/电池）→ **这个进程里的 GATT 会话坏了**，
+            同一个进程里重连多少次都是同一张残缺服务表（真机换电池后就是这样，
+            日志里连续 84 次"缺少 ATVV"）。只有新进程才能重新协商出完整服务表。
+
+        所以这里做的是进程级重启（和界面上的「重启」同一个动作）。边界条件：
+          · 只在**曾经成功拿到过 ATVV** 之后才动手 —— 从没见过说明这支遥控器可能
+            真的没有语音服务（兼容款），重启也白搭，不能让它进死循环；
+          · 限流：10 分钟最多一次（AUTO_HEAL_COOLDOWN），别反复打断正在用的语音；
+          · 可用 `voice` 配置里的 `auto_heal: false` 关掉；
+          · 没有接自愈回调（例如单测/嵌入用法）→ 什么都不做，交给上层日志提示。
+        返回 True 表示已经触发（调用方就别再喊"请点重启"了）。
+        """
+        if not bool((self.voice_spec or {}).get("auto_heal", True)):
+            return False
+        if not self._ever_ok or self.on_auto_heal is None:
+            return False
+        now = time.time()
+        if now - getattr(self, "_healed_at", 0.0) < AUTO_HEAL_COOLDOWN:
+            return False
+        self._healed_at = now
+        self._log(i18n.L(
+            f"语音：连续 {self.misses} 次只枚举到 {n_services} 个服务（缺 ATVV）—— "
+            f"进程里的蓝牙会话已经坏了，重连治不好。正在自动重启客户端恢复"
+            f"（10 分钟最多一次；要关掉可设 voice.auto_heal = false）…",
+            f"Voice: {self.misses} connects in a row showed only {n_services} services "
+            f"(ATVV missing) — this process's Bluetooth session is broken and reconnecting "
+            f"cannot fix it. Restarting the client automatically (at most once per 10 min; "
+            f"disable with voice.auto_heal = false)…"))
+        try:
+            self.on_auto_heal()
+        except Exception as e:
+            self._log(i18n.L(f"语音：自动重启失败（{type(e).__name__}: {e}）—— 请手动点「重启」。",
+                             f"Voice: auto-restart failed ({type(e).__name__}: {e}) — "
+                             f"please click Restart."))
+            return False
+        # 进程马上要退出：在退出前那零点几秒里如果不小心又失败一次，别喊
+        # "请点「重启」"（会让人以为自愈没生效）。真机日志里 23:14:48 就多出一条。
+        self._heal_pending = True
+        return True
+
     def set_addr(self, addr):
         """遥控器蓝牙地址热更新。
 
@@ -935,6 +992,33 @@ class VoiceRole(threading.Thread):
     def set_voice_spec(self, spec):
         self.voice_spec = spec or self.voice_spec
         self.voice = VoiceKey(self.voice_spec)
+
+    def close_connection_blocking(self, timeout=1.5):
+        """给「重启客户端」用：在进程退出前把当前 GATT 连接**干净断开**。
+
+        不断开的话，BLE 链路要等监督超时（真机约 30 秒）才释放，新进程在这期间
+        只能拿到残缺服务表 —— 这就是"重启后语音还要等半分钟"的根源。
+        从语音线程自己调用（自愈路径）时直接返回：那时连接已经先关过了，
+        而且在同一个事件循环里等自己会卡死。
+        """
+        if self is threading.current_thread():
+            return
+        loop = getattr(self, "_loop", None)
+        if loop is None or loop.is_closed():
+            return
+        ev = threading.Event()
+
+        async def _do():
+            try:
+                await self._close_current()
+            finally:
+                ev.set()
+
+        try:
+            loop.call_soon_threadsafe(lambda: asyncio.ensure_future(_do()))
+            ev.wait(timeout)
+        except Exception:
+            pass
 
     # ---------- 线程主体 ----------
     def run(self):
@@ -1266,7 +1350,10 @@ class VoiceRole(threading.Thread):
             return
         self._log(f"语音：已连接遥控器 {self.addr}")
         self._session_ok = True
-        self._stuck = 0                     # 连上了 → "卡住"计数清零（自动解卡的依据）
+        # 连接成功 → 不再是"扫不到广播"那种卡法，自动解卡计数清零。
+        # ⚠ 但**连上 ≠ 能说话**：下面还要验 ATVV。以前这里直接当成功（连服务表都不看），
+        #   导致"连上但只有 4 个通用服务"的坏会话每轮把计数清零，任何自愈都等不到。
+        self._stuck = 0
 
         chars, uuids = [], []
         try:
@@ -1284,35 +1371,87 @@ class VoiceRole(threading.Thread):
                     return c
             return None
 
+        # 电量：在 ATVV 校验**之前**读。理由：服务表残缺（只剩 4 个通用服务）时 180F/0x2A19
+        # 往往还在，先读出来能少一份疑问；读不到也不影响语音。
+        batt = find(BATTERY_LEVEL)
+        if batt is not None:
+            try:
+                raw = await asyncio.wait_for(client.read_gatt_char(batt), 3.0)
+                pct = int(raw[0]) if raw else None
+                if pct is not None and 0 <= pct <= 100:
+                    self.battery = pct
+                    self._log(i18n.L(f"语音：遥控器电量 {pct}%",
+                                     f"Voice: remote battery {pct}%"))
+                    if pct <= 20 and not self._battery_warned:
+                        self._battery_warned = True
+                        self._log(i18n.L(
+                            f"语音：电量偏低（{pct}%）—— 建议换电池；换电池后如果语音失效，"
+                            f"连续 3 次失败会自动重启恢复。",
+                            f"Voice: low battery ({pct}%) — replace it soon. If voice stops "
+                            f"working after the swap, three failed connects will auto-restart "
+                            f"the client."))
+                    self._emit("status", {})   # 让界面立刻刷新出电量
+            except Exception as e:
+                self._log(f"语音：读电量失败（{type(e).__name__}: {e}）")
+
         audio, status = find(ATVV_AUDIO), find(ATVV_STATUS)
         ctl = find(ATVV_CTL)
         if not (audio and status):
             self.misses += 1
             self._log(f"语音：缺少 ATVV 特征（本次枚举到 {len(uuids)} 个服务："
                       f"{', '.join(uuids) or '空'}）")
+            healed = False
             if self.misses >= 3:
-                self._log("语音：连续 3 次看不到 ATVV —— 这个进程里的蓝牙会话已经"
-                          "乱了。请点「重启」重新拉起客户端（重连治不好）。")
-            if not getattr(self, "_variant_hinted", False):
-                # ★ 只看到通用服务（1800/1801/180a/180f）、没有 ab5e… → 这支遥控器
-                #   **根本没有语音服务**。真机上见过：同一款"G9N9N/GA01919"兼容款，
-                #   不同批次差别很大 —— 有的带语音，有的只有 HID 按键。这句话直接给用户
-                #   一个结论和一条出路，省得反复怀疑软件。
-                self._variant_hinted = True
-                self._log(i18n.L(
-                    "语音：这台遥控器**没有语音服务**（ATVV，ab5e0001）—— 它多半不是原装"
-                    "G9N9N / GA01919（兼容款批次差异很大：同一链接买的两支可能一支能一支不能）。"
-                    "语音功能用不了，按键映射可能仍然可用。换一支原装遥控器，"
-                    "或改用 Google TV Streamer（2024）那支遥控器即可。",
-                    "Voice: this remote has **no voice service** (ATVV, ab5e0001) — it is very "
-                    "likely not a genuine G9N9N / GA01919 (compatible units vary a lot between "
-                    "batches: two remotes from one listing can behave differently). Voice will not "
-                    "work; key mapping may still work. Use a genuine remote, or the Google TV "
-                    "Streamer (2024) remote."))
+                # ★ 自愈重启前先把这条 GATT 连接**干净地断开**。
+                #   真机日志（2026-11-22）：重启后新进程连续 8 次只拿到 6 个服务
+                #   （含 ae40 / d343bfc0、没有 ab5e），整整 30 秒才恢复 —— 这不是新
+                #   进程的毛病，而是**旧进程直接 os._exit、没断开的 BLE 链路要等 BLE
+                #   监督超时（约 30 秒）才释放**；这期间遥控器只给"第二客户端"的残缺
+                #   服务表。先 disconnect 再重启，新进程一开始就能协商出完整表。
+                try:
+                    await self._close_current()
+                except Exception:
+                    pass
+                healed = self._maybe_auto_heal(len(uuids))
+            if (self.misses >= 3 and not healed
+                    and not getattr(self, "_heal_pending", False)):
+                if self._ever_ok:
+                    self._log("语音：连续 3 次看不到 ATVV —— 这个进程里的蓝牙会话已经"
+                              "乱了。请点「重启」重新拉起客户端（重连治不好）。")
+                elif self._just_healed and not getattr(self, "_variant_hinted", False):
+                    # 本进程是刚自愈重启拉起来的：它**知道**这支遥控器有语音（上一进程拿到过），
+                    # 只是新进程的头几次枚举还可能残。别报"没有语音服务"，给个安稳的提示。
+                    self._variant_hinted = True
+                    self._log(i18n.L(
+                        "语音：刚自动重启过，服务表还没恢复（仍缺 ATVV）—— 再等几轮；"
+                        "若几分钟都不行，关掉其它可能的客户端后手动点「重启」。",
+                        "Voice: the client was just auto-restarted and the service table has not "
+                        "recovered yet (ATVV still missing) — give it a few more rounds; if it "
+                        "stays like this for minutes, close other clients and click “Restart”."))
+                elif not getattr(self, "_variant_hinted", False):
+                    # ★ 连续 3 次都只看到通用服务、没有 ab5e… 且本进程从没成功过 →
+                    #   这支遥控器**多半真的没有语音服务**。真机上见过：同一款
+                    #   "G9N9N/GA01919"兼容款，不同批次差别很大 —— 有的带语音，有的只有
+                    #   HID 按键。这句话直接给用户一个结论和一条出路，省得反复怀疑软件。
+                    #   ⚠ 必须等到第 3 次才下结论：真机日志里，刚重启的进程第一次常常
+                    #   只枚举到 6 个服务（缺 ATVV），16 秒后就自己好了 —— 第一次就报
+                    #   "没有语音服务"会把人吓一跳（2026-11-16 实测）。
+                    self._variant_hinted = True
+                    self._log(i18n.L(
+                        "语音：这台遥控器**没有语音服务**（ATVV，ab5e0001）—— 它多半不是原装"
+                        "G9N9N / GA01919（兼容款批次差异很大：同一链接买的两支可能一支能一支不能）。"
+                        "语音功能用不了，按键映射可能仍然可用。换一支原装遥控器，"
+                        "或改用 Google TV Streamer（2024）那支遥控器即可。",
+                        "Voice: this remote has **no voice service** (ATVV, ab5e0001) — it is very "
+                        "likely not a genuine G9N9N / GA01919 (compatible units vary a lot between "
+                        "batches: two remotes from one listing can behave differently). Voice will not "
+                        "work; key mapping may still work. Use a genuine remote, or the Google TV "
+                        "Streamer (2024) remote."))
             await self._close_current()
             return
 
         self.misses = 0
+        self._ever_ok = True                # 本次进程里真正拿到过 ATVV（会话自愈的前提）
         self.connected = True
         self.note = i18n.L("已连接", "Connected")
         self._emit("status", {"connected": True, "note": self.note})
@@ -1400,7 +1539,9 @@ class VoiceRole(threading.Thread):
             if n < 20:
                 # 按键通了、但遥控器没送音频 —— 这是另一类问题（没真正进录音态），
                 # 跟「语音键读不到」完全不是一回事，日志里必须分开说。
-                self._log("语音：⚠ 音频帧太少 —— 遥控器没在送音频（多半没真正进录音态）")
+                # 刚连上那十几秒里常见：ATVV 链路刚建立，遥控器自己还没进录音态。
+                self._log("语音：⚠ 音频帧太少 —— 遥控器没在送音频（多半没真正进录音态；"
+                          "刚连上时等 1～2 秒再按，或换新电池后重试）")
             elif self.sink is None:
                 self._log("语音：⚠ 音频出口还没就绪，这段没送出去（看护任务正在重试）")
         elif b[0] not in (0x00,):

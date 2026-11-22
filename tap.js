@@ -113,7 +113,8 @@ if (target === null) {
       if (raw !== lastRaw) {           // 内容有变化才上报：空闲帧不再刷屏
         lastRaw = raw;
         sent++;
-        send({ kind: "report", raw: raw });
+        // ts 用来在 Python 侧量「钩子读到 → 真正处理」的延迟
+        send({ kind: "report", raw: raw, ts: Date.now() });
       }
       // 快照已发出，现在才可以安全改写输出缓冲区
       nullify(this.out, this.outLen);

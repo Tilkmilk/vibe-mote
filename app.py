@@ -18,6 +18,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import importlib.util
 import json
 import os
@@ -49,7 +50,7 @@ if HERE not in sys.path:
 import i18n  # noqa: E402  （必须在 sys.path 之后就位）
 
 APP_NAME = "VibeMote"
-APP_VERSION = "1.1.0"          # 报 bug 时请带上这个版本号（界面「设置 → 界面」能看到）
+APP_VERSION = "1.3.1"          # 报 bug 时请带上这个版本号（界面「设置 → 界面」能看到）
 WEB = os.path.join(HERE, "web")
 CONFIG = os.path.join(HERE, "config.json")
 REQUIREMENTS = os.path.join(HERE, "requirements.txt")
@@ -64,6 +65,11 @@ AUTOSTART_VBS = os.path.join(HERE, "启动遥控器.vbs")
 READY = os.path.join(HERE, "_ready.txt")
 # 「上次是不是正常退出」的记录：正常退出时删掉（见 main 的清理段）
 RUNSTATE = os.path.join(HERE, "_run_state.txt")
+# 自愈重启的"交接条"：restart_client(reason="auto-heal") 写下时间戳，新进程读到
+# （且足够新）就知道自己是自愈拉起来的 —— 前几次枚举仍缺 ATVV 时不要误报
+# "遥控器没有语音服务"（真机上重启后 2 次失败、16 秒后就自己好了）。
+HEALED_MARK = os.path.join(HERE, "_voice_healed.txt")
+JUST_HEALED = False     # 由 main() 读交接条后置位；VoiceRole 用它决定提示措辞
 
 DEFAULT_PORT = 8787
 CREATE_NO_WINDOW = 0x08000000
@@ -94,6 +100,10 @@ DEFAULT_CONFIG = {
     "voice": {"mode": "hold", "key": "RALT", "mods": []},
     "audio": {"gain": 4.0, "agc": True, "relay": True},
     "keys": RECOMMENDED,
+    # 按前台应用自动切换套餐：exe（小写文件名）→ 预设 app id
+    "auto_profile": {"enabled": False, "fallback": "", "rules": {}},
+    # 用户自己「另存为」的套餐：{名字: {"keys": {...}}}
+    "custom_profiles": {},
 }
 TYPES = ("key", "hold", "combo", "holdcombo", "mouse", "holdmouse", "text")
 
@@ -245,6 +255,11 @@ def _merge_defaults(cfg):
     audio = dict(DEFAULT_CONFIG["audio"])
     audio.update(cfg.get("audio") or {})
     out["audio"] = audio
+    ap = dict(DEFAULT_CONFIG["auto_profile"])
+    ap.update(cfg.get("auto_profile") or {})
+    out["auto_profile"] = ap
+    cp = cfg.get("custom_profiles")
+    out["custom_profiles"] = dict(cp) if isinstance(cp, dict) else {}
     keys_map = cfg.get("keys")
     out["keys"] = dict(keys_map) if isinstance(keys_map, dict) else dict(RECOMMENDED)
     return out
@@ -276,6 +291,31 @@ def load_config():
     return _merge_defaults({})
 
 
+def _clean_key_item(m):
+    """校验并裁剪一条按键映射；不合法返回 None。
+
+    可选参数（只有写了才保留，保持 config.json 干净）：
+      · holdmouse 的 repeat_initial / repeat_interval（毫秒）：首格延迟与连发间隔；
+      · text 的 enter（true）：打完字再按一次回车。
+    """
+    if not isinstance(m, dict) or m.get("type") not in TYPES \
+            or not isinstance(m.get("value"), str):
+        return None
+    item = {"type": m["type"], "value": m["value"],
+            "mods": [str(x).upper() for x in (m.get("mods") or [])],
+            "text": str(m.get("text") or "")}
+    try:
+        if m.get("repeat_initial") is not None:
+            item["repeat_initial"] = max(0, min(5000, int(m["repeat_initial"])))
+        if m.get("repeat_interval") is not None:
+            item["repeat_interval"] = max(10, min(2000, int(m["repeat_interval"])))
+    except (TypeError, ValueError):
+        pass
+    if m.get("enter"):
+        item["enter"] = True
+    return item
+
+
 def save_config(cfg):
     clean = {"_comment": DEFAULT_CONFIG["_comment"]}
     # ⚠ 语言必须在这里保住：save_config 只保留白名单字段，界面保存配置时不会带上 lang，
@@ -290,6 +330,12 @@ def save_config(cfg):
     clean["voice"] = {"mode": "tap" if v.get("mode") == "tap" else "hold",
                       "key": str(v.get("key") or "RALT"),
                       "mods": [str(x).upper() for x in (v.get("mods") or [])]}
+    # 自愈类开关是"高级选项"，界面里没有编辑器 —— 保存时要原样带过去，
+    # 否则用户手写进 config.json 的 auto_heal=false 会被下一次「保存」冲掉，
+    # 表现为"关掉了却还在自动重启"。
+    for _flag in ("auto_unstick", "auto_heal"):
+        if _flag in v:
+            clean["voice"][_flag] = bool(v[_flag])
     a = cfg.get("audio") or {}
     clean["audio"] = {"gain": float(a.get("gain", 4.0)),
                       "agc": bool(a.get("agc", True)),
@@ -310,12 +356,50 @@ def save_config(cfg):
                                "key": m["value"],
                                "mods": [str(x).upper() for x in (m.get("mods") or [])]}
             continue
-        keys_map[k] = {"type": m["type"], "value": m["value"],
-                       "mods": [str(x).upper() for x in (m.get("mods") or [])],
-                       "text": str(m.get("text") or "")}
+        item = _clean_key_item(m)
+        if item:
+            keys_map[k] = item
     clean["keys"] = keys_map
     if voice_alias:
         clean["voice"] = voice_alias
+    # 自定义套餐：{名字: {"keys": {...}}}。内置套餐在 profiles.py 里（只读），
+    # 这里存用户自己"另存为"的那几套；同样走白名单校验。
+    cp = {}
+    for name, spec in (cfg.get("custom_profiles") or {}).items():
+        nm = str(name or "").strip()[:40]
+        if not nm or not isinstance(spec, dict):
+            continue
+        ckeys = {}
+        for k, m in (spec.get("keys") or {}).items():
+            if str(k).startswith("_") or k == "voice":
+                continue
+            item = _clean_key_item(m)
+            if item:
+                ckeys[k] = item
+        if ckeys:
+            cp[nm] = {"keys": ckeys}
+    clean["custom_profiles"] = cp
+    # 自动套餐：exe（只留文件名、小写）→ 预设 id（内置，或 custom:<名字>）。
+    # 无效的 id 直接丢掉，免得界面/手写出一个不存在的套餐名，运行时无从应用。
+    ap = cfg.get("auto_profile") or {}
+    try:
+        import profiles as _prof
+        _valid_apps = set(_prof.APPS.keys())
+    except Exception:
+        _valid_apps = {"workbuddy", "codex", "claude", "generic"}
+    _valid_apps |= {"custom:" + n for n in cp}
+    _rules = {}
+    for _exe, _app in (ap.get("rules") or {}).items():
+        _exe_s = os.path.basename(str(_exe or "")).strip().lower()
+        _app_s = str(_app or "").strip()
+        if _exe_s and _app_s in _valid_apps:
+            _rules[_exe_s] = _app_s
+    _fb = str(ap.get("fallback") or "").strip()
+    clean["auto_profile"] = {
+        "enabled": bool(ap.get("enabled")),
+        "fallback": _fb if _fb in _valid_apps else "",
+        "rules": _rules,
+    }
     # ★ 原子写：读的人不会读到半个文件。两处细节别改回去：
     #   · 临时文件名带 pid —— i18n.save_to_config() 也写 config.json，
     #     原来两边共用 `config.json.tmp`，并发时会互相 replace 掉，
@@ -1194,6 +1278,130 @@ def relaunch_elevated():
                         "prompt, then refresh this page in about 5 seconds")
 
 
+_RESTART_LOCK = threading.Lock()
+_RESTARTING = False
+
+
+def _wait_process_exit(pid, timeout=30.0):
+    """只读地等某个进程退出（拿 SYNCHRONIZE 句柄，不杀它）。
+
+    进程已经不在了 / 打不开句柄 → 直接返回（那就没必要等）。
+    """
+    try:
+        import ctypes
+        k32 = ctypes.windll.kernel32
+        h = k32.OpenProcess(0x00100000, False, int(pid))     # SYNCHRONIZE
+        if not h:
+            return
+        try:
+            k32.WaitForSingleObject(h, int(max(0.0, timeout) * 1000))
+        finally:
+            k32.CloseHandle(h)
+    except Exception:
+        time.sleep(2.0)                  # 极端情况下退化成短等待，别卡死监督进程
+
+
+def supervise_restart(old_pid):
+    """重启监督进程：等旧进程彻底退出 → 用启动器正常拉起一份新客户端。
+
+    ⚠ 为什么不沿用 `--takeover` 自己杀旧实例（真机复现过）：
+      · 两个进程同时"接管"时会**互相 taskkill** —— 新实例刚结束旧的，自己也没了，
+        最后一份都不剩；
+      · takeover 靠读命令行认人，跨权限读不到时会误判"端口被别的程序占着"而拒绝启动。
+    这里先等旧进程退出、再走用户熟悉的启动器：不杀任何人、不抢锁、不读别人的命令行。
+    就算这一瞬间开机自检也拉起了一份，也只会有**一份**活下来（另一份看到端口被占就自己退出）。
+    """
+    try:
+        if old_pid and int(old_pid) > 0 and int(old_pid) != os.getpid():
+            _wait_process_exit(int(old_pid), 30.0)
+    except Exception:
+        pass
+    # 旧进程已经没了：端口和单实例锁都已释放。交给启动器（它还会确认真的起来了）。
+    wscript = os.path.join(os.environ.get("SystemRoot", r"C:\Windows"),
+                           "System32", "wscript.exe")
+    try:
+        subprocess.Popen([wscript, AUTOSTART_VBS, "--silent"],
+                         cwd=HERE, stdin=subprocess.DEVNULL,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                         creationflags=0x00000008 | 0x00000200,   # DETACHED | NEW_GROUP
+                         close_fds=True)
+    except Exception as e:
+        try:
+            BUS.log(i18n.L(f"重启失败：拉起启动器出错（{type(e).__name__}: {e}）",
+                           f"Restart failed: could not run the launcher "
+                           f"({type(e).__name__}: {e})"))
+        except Exception:
+            pass
+        return 1
+    return 0
+
+
+def restart_client(reason="manual"):
+    """进程级重启：拉一个监督进程，等自己退出后由启动器重新拉起客户端。
+
+    「重启」按钮和语音会话自愈（voice.VoiceRole.on_auto_heal）共用这一条路径：
+      · 解释器按启动器那套优先级挑（优先 .venv 的 pythonw，见 best_pythonw），
+        否则会出现"用系统 Python 拉起一个没装依赖的自己"的死循环；
+      · 监督进程是自己的子进程 → **继承当前权限**：管理员实例重启后还是管理员，
+        不会平白弹出 UAC；
+      · 防重入：自愈和用户点「重启」撞在一起时只放行一次，别拉起两个监督进程。
+    返回 (ok, msg)；ok=True 时本进程会很快 os._exit(0)。
+    """
+    global _RESTARTING
+    if reason == "auto-heal":
+        # 给新进程留张"交接条"（见 HEALED_MARK）：它据此知道"我上辈子是有语音的"，
+        # 头几次枚举还残时不至于吓唬用户说遥控器没有语音服务。
+        try:
+            with open(HEALED_MARK, "w", encoding="utf-8") as f:
+                f.write(str(time.time()))
+        except OSError:
+            pass
+    # ★ 退出前先把 BLE 连接干净断开：旧进程直接 os._exit 时，遥控器会一直
+    #   攥着这条链路直到 BLE 监督超时（真机约 30 秒），新进程在这期间只能拿到
+    #   残缺服务表（6 个服务、没有 ab5e…）——"重启后语音还要等半分钟"就是它。
+    try:
+        if ROLES and getattr(ROLES, "voice", None):
+            ROLES.voice.close_connection_blocking(1.5)
+    except Exception:
+        pass
+    with _RESTART_LOCK:
+        if _RESTARTING:
+            return False, i18n.L("已经在重启了", "Already restarting")
+        exe = best_pythonw()
+        cmd = [exe, os.path.join(HERE, "app.py"), "--supervise", str(os.getpid())]
+        try:
+            subprocess.Popen(cmd, cwd=HERE, stdin=subprocess.DEVNULL,
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                             creationflags=0x00000008 | 0x00000200,   # DETACHED | NEW_GROUP
+                             close_fds=True)
+        except Exception as e:
+            if reason == "auto-heal":
+                try:
+                    os.remove(HEALED_MARK)
+                except OSError:
+                    pass
+            return False, i18n.L(f"重启失败：{e!r}", f"Restart failed: {e!r}")
+        _RESTARTING = True
+    if reason == "auto-heal":
+        BUS.log(i18n.L("语音：正在自动重启客户端（会话自愈）…",
+                       "Voice: auto-restarting the client (session self-heal)…"))
+    else:
+        BUS.log(i18n.L(
+            f"正在重启客户端（用 {os.path.basename(exe)} 拉起新实例）…",
+            f"Restarting the client (launching a new instance with "
+            f"{os.path.basename(exe)})…"))
+    # 主动重启是**正常退出**：删掉运行标记，否则下次启动会吓人地报"上次没正常退出"
+    # （os._exit 不会走 main 末尾的清理段）。
+    try:
+        os.remove(RUNSTATE)
+    except OSError:
+        pass
+    threading.Thread(target=lambda: (time.sleep(1.0), os._exit(0)),
+                     daemon=True).start()
+    return True, i18n.L("正在重启，约 5 秒后刷新本页面",
+                        "Restarting — refresh this page in about 5 seconds")
+
+
 def qwen_flag_state():
     """千问输入法是否已允许「程序注入的按键」。它默认会丢弃注入按键。"""
     try:
@@ -1676,6 +1884,14 @@ class Roles:
         self.voice = None
         self.keytap = None
         self.lock = threading.Lock()
+        # 按前台应用自动切换套餐（见 _auto_loop）。这三个字段也暴露在 /api/state 里，
+        # 界面据此显示"现在前台是什么、套用了哪套"。
+        self.auto_foreground = ""
+        self.auto_active = ""
+        self._auto_last = None          # (exe, app_id) —— 上次真正应用过的组合
+        self._auto_was_enabled = False
+        self._auto_stop = threading.Event()
+        self._auto_thread = None
 
     def _on_event(self, kind, payload=None):
         if kind == "log":
@@ -1687,15 +1903,30 @@ class Roles:
             # 按键事件必须同时写一行日志：用户「按了半天没反应」时，
             # 只有日志能区分「根本没读到」和「读到了但没映射」。
             if down:
+                # 时延诊断：钩子 → 处理 → SendInput 花了多久、距上一次报文多久。
+                # 正常应该在几十毫秒内；如果这里出现几百毫秒/秒级，问题不在"手感"。
+                extra = ""
+                try:
+                    bits = []
+                    if p.get("latency_ms") is not None:
+                        bits.append(f"传输 {float(p['latency_ms']):.0f}ms")
+                    if p.get("exec_ms") is not None:
+                        bits.append(f"执行 {float(p['exec_ms']):.1f}ms")
+                    if p.get("gap_ms") is not None:
+                        bits.append(f"距上次 {float(p['gap_ms']):.0f}ms")
+                    if bits:
+                        extra = "（" + " · ".join(bits) + "）"
+                except (TypeError, ValueError):
+                    pass
                 label = REMOTE_LABELS.get(kid, str(kid))
                 if kid == "voice":
                     spec = self.cfg.get("voice") or {}
                     how = "按一下" if spec.get("mode") == "tap" else "按住"
-                    BUS.log(f"[按键] 语音 → {how} {spec.get('key')}")
+                    BUS.log(f"[按键] 语音 → {how} {spec.get('key')}" + extra)
                 else:
                     m = (self.cfg.get("keys") or {}).get(kid)
                     BUS.log(f"[按键] {label} → "
-                            + (describe_mapping(m) if m else "（未映射）"))
+                            + (describe_mapping(m) if m else "（未映射）") + extra)
         elif kind == "status":
             BUS.push({"ev": "state", "state": state_snapshot(self.cfg, self)})
 
@@ -1722,7 +1953,11 @@ class Roles:
                 self.voice = voice_mod.VoiceRole(
                     self._on_event, addr=self.cfg.get("remote_addr"),
                     audio=self.cfg.get("audio"), voice_spec=self.cfg.get("voice"),
-                    relay=bool((self.cfg.get("audio") or {}).get("relay", True)))
+                    relay=bool((self.cfg.get("audio") or {}).get("relay", True)),
+                    # 语音会话坏了（连得上但没有 ATVV）→ 自动重启整个客户端。
+                    # 同一进程里重连治不好，只有新进程能重新协商出完整服务表。
+                    on_auto_heal=lambda: restart_client("auto-heal"),
+                    just_healed=JUST_HEALED)
                 self.voice.start()
             if self.keytap is None and importlib.util.find_spec("frida") is not None:
                 import keys as keys_mod
@@ -1735,6 +1970,7 @@ class Roles:
                 self.keytap.start()
         BUS.log(i18n.L("客户端已启动", "Client started"))
         BUS.push({"ev": "state", "state": state_snapshot(self.cfg, self)})
+        self._ensure_auto_thread()
         return True, i18n.L("已启动", "Started")
 
     def _ensure_qwen_flag(self):
@@ -1827,6 +2063,92 @@ class Roles:
     def running(self):
         return self.voice is not None
 
+    # ---------- 按前台应用自动切换套餐 ----------
+    def _ensure_auto_thread(self):
+        if self._auto_thread and self._auto_thread.is_alive():
+            return
+        self._auto_stop.clear()
+        self._auto_thread = threading.Thread(target=self._auto_loop, daemon=True,
+                                             name="AutoProfile")
+        self._auto_thread.start()
+
+    def _auto_loop(self):
+        """每 1 秒看一眼前台窗口，命中规则就套用对应套餐。
+
+        只在**组合变化**时动手（exe + app_id 与上次相同就跳过），避免每秒重写配置。
+        只改按键映射，不动语音键 —— 输入法是整机一套，不该跟着窗口跳。
+        """
+        while not self._auto_stop.is_set():
+            time.sleep(1.0)
+            try:
+                self._auto_tick()
+            except Exception:
+                pass
+
+    def _auto_tick(self):
+        cfg = self.cfg
+        ap = cfg.get("auto_profile") or {}
+        enabled = bool(ap.get("enabled"))
+        if self.keytap is None:
+            self._auto_was_enabled = enabled
+            return
+        if not enabled:
+            if self._auto_was_enabled:
+                BUS.log(i18n.L("自动套餐：已关闭（当前按键映射保持不变）",
+                               "Auto profile: disabled (current key mapping is kept)"))
+                self.auto_active = ""
+                self._auto_last = None
+            self._auto_was_enabled = False
+            self.auto_foreground = ""
+            return
+        self._auto_was_enabled = True
+        exe = foreground_exe()
+        self.auto_foreground = exe
+        rules = {str(k).lower(): str(v) for k, v in (ap.get("rules") or {}).items()}
+        app_id = (rules.get(exe.lower()) if exe else "") or str(ap.get("fallback") or "")
+        if not app_id:
+            self.auto_active = ""
+            self._auto_last = None
+            return
+        key = (exe.lower(), app_id)
+        if key == self._auto_last:
+            return
+        self._auto_last = key
+        self._apply_auto_profile(app_id, exe)
+
+    def _apply_auto_profile(self, app_id, exe):
+        merged = load_config()
+        if app_id.startswith("custom:"):
+            cname = app_id[7:]
+            spec = (merged.get("custom_profiles") or {}).get(cname)
+            if not isinstance(spec, dict) or not (spec.get("keys") or {}):
+                return
+            keys = dict(spec["keys"])
+            name = cname
+        else:
+            import profiles
+            app = profiles.APPS.get(app_id)
+            if app is None:
+                return
+            ime_id = str((self.cfg.get("profile") or {}).get("ime") or profiles.DEFAULT_IME)
+            keys, _voice = profiles.build(app_id, ime_id)
+            name = i18n.pick(app.get("name"))
+        # 和「应用预设」同一语义：落盘 + 热更新，保证界面显示的、配置里存的、
+        # 实际生效的是同一套（否则按键页会显示一套、按下去是另一套）。
+        merged["keys"] = keys
+        prof = dict(merged.get("profile") or {})
+        prof["app"] = app_id
+        merged["profile"] = prof
+        clean = save_config(merged)
+        self.cfg = _merge_defaults(clean)
+        self.keytap.set_mapping(self.cfg.get("keys") or {})
+        self.auto_active = app_id
+        BUS.log(i18n.L(
+            f"自动套餐：前台 {exe or '未知程序'} → 应用「{name}」（{len(keys)} 个按键）",
+            f"Auto profile: foreground {exe or 'unknown program'} → applied “{name}” "
+            f"({len(keys)} keys)"))
+        BUS.push({"ev": "state", "state": state_snapshot(self.cfg, self)})
+
 
 ROLES: Roles | None = None
 
@@ -1858,6 +2180,7 @@ def state_snapshot(cfg, roles=None):
             "mods": (cfg.get("voice") or {}).get("mods", []),
             "ready": bool(v and v.voice.ok),
             "connected": bool(v and v.connected),
+            "battery": (getattr(v, "battery", None) if v else None),
             "note": (v.note if v else i18n.L("未启动", "Not started")),
         },
         "keys": {
@@ -1866,6 +2189,14 @@ def state_snapshot(cfg, roles=None):
                                        if not d["ok"]
                                        else i18n.L("未启动", "Not started"))),
             "blocked_count": len(getattr(k, "blocked_usages", []) or []),
+            "timing": (k.timing_stats() if k else None),
+        },
+        "auto_profile": {
+            "enabled": bool((cfg.get("auto_profile") or {}).get("enabled")),
+            "fallback": str((cfg.get("auto_profile") or {}).get("fallback") or ""),
+            "rules": dict((cfg.get("auto_profile") or {}).get("rules") or {}),
+            "foreground": getattr(roles, "auto_foreground", ""),
+            "active": getattr(roles, "auto_active", ""),
         },
         "deps": d,
         "autostart": autostart_state(),
@@ -2416,10 +2747,21 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"remote_addr": cfg["remote_addr"],
                                "profile": cfg["profile"],
                                "voice": cfg["voice"], "audio": cfg["audio"],
-                               "keys": cfg["keys"]})
+                               "keys": cfg["keys"],
+                               "auto_profile": cfg.get("auto_profile")
+                               or DEFAULT_CONFIG["auto_profile"],
+                               "custom_profiles": cfg.get("custom_profiles") or {}})
         if path == "/api/profiles":
             import profiles
-            return self._json(profiles.catalog())
+            cat = profiles.catalog()
+            # 自定义套餐（用户「另存为」的）随目录一起下发：界面和自动切换规则
+            # 都要能把它们和内置套餐同等对待。
+            cp = cfg.get("custom_profiles") or {}
+            cat["custom"] = [
+                {"id": "custom:" + str(n), "name": str(n),
+                 "keys": (spec or {}).get("keys") or {}}
+                for n, spec in cp.items()]
+            return self._json(cat)
         if path == "/api/uninstall-items":
             import uninstall as un_mod
             # 带上"现在在不在 / 多大"：界面上会显示「（154 MB）」「（不存在）」，
@@ -2535,11 +2877,22 @@ class Handler(BaseHTTPRequestHandler):
             if "keys" in body:
                 merged["keys"] = body["keys"] if isinstance(body["keys"], dict) else {}
             if "voice" in body and isinstance(body["voice"], dict):
-                merged["voice"] = body["voice"]
+                # 界面只提交 mode/key/mods —— 自愈开关不是界面字段，要保留原来的值，
+                # 否则用户手写的 auto_heal=false 一点「保存」就没了。
+                old_v = merged.get("voice") or {}
+                new_v = dict(body["voice"])
+                for _flag in ("auto_unstick", "auto_heal"):
+                    if _flag in old_v and _flag not in new_v:
+                        new_v[_flag] = old_v[_flag]
+                merged["voice"] = new_v
             if "audio" in body and isinstance(body["audio"], dict):
                 merged["audio"] = body["audio"]
             if "remote_addr" in body:
                 merged["remote_addr"] = body["remote_addr"]
+            if "auto_profile" in body and isinstance(body["auto_profile"], dict):
+                merged["auto_profile"] = body["auto_profile"]
+            if "custom_profiles" in body and isinstance(body["custom_profiles"], dict):
+                merged["custom_profiles"] = body["custom_profiles"]
             clean = save_config(merged)
             if ROLES:
                 ROLES.apply_config(_merge_defaults(clean))
@@ -2553,6 +2906,75 @@ class Handler(BaseHTTPRequestHandler):
     def _action(self, body):
         act = (body or {}).get("action")
         cfg = load_config()
+        if act == "probe-foreground":
+            # 界面「添加当前前台程序」用：返回前台窗口的 exe 文件名。
+            return self._json({"ok": True, "exe": foreground_exe()})
+        if act == "save-custom-profile":
+            name = str((body or {}).get("name") or "").strip()[:40]
+            keys = (body or {}).get("keys")
+            if not name or not isinstance(keys, dict) or not keys:
+                return self._json({"ok": False,
+                                   "msg": i18n.L("套餐名和按键都不能为空",
+                                                 "Profile name and keys cannot be empty")})
+            merged = load_config()
+            cp = dict(merged.get("custom_profiles") or {})
+            cp[name] = {"keys": keys}
+            merged["custom_profiles"] = cp
+            clean = save_config(merged)
+            if ROLES:
+                # 只更新内存里的套餐目录，不动当前生效的按键映射
+                ROLES.cfg = _merge_defaults(clean)
+            n = len((clean.get("custom_profiles") or {}).get(name, {}).get("keys") or {})
+            BUS.log(i18n.L(f"已保存自定义套餐「{name}」（{n} 个按键）",
+                           f"Saved custom profile “{name}” ({n} keys)"))
+            return self._json({
+                "ok": True,
+                "msg": i18n.L(f"已保存套餐「{name}」：{n} 个按键",
+                              f"Saved profile “{name}”: {n} keys"),
+                "data": {"name": name}})
+        if act == "delete-custom-profile":
+            name = str((body or {}).get("name") or "").strip()
+            merged = load_config()
+            cp = dict(merged.get("custom_profiles") or {})
+            if name not in cp:
+                return self._json({"ok": False,
+                                   "msg": i18n.L("没有这个自定义套餐",
+                                                 "No such custom profile")})
+            cp.pop(name)
+            merged["custom_profiles"] = cp
+            # 自动切换规则里如果引用了这套，一并清掉（否则会留下指向不存在套餐的规则）
+            ap = dict(merged.get("auto_profile") or {})
+            ap["rules"] = {k: v for k, v in (ap.get("rules") or {}).items()
+                           if v != "custom:" + name}
+            if ap.get("fallback") == "custom:" + name:
+                ap["fallback"] = ""
+            merged["auto_profile"] = ap
+            clean = save_config(merged)
+            if ROLES:
+                ROLES.cfg = _merge_defaults(clean)
+            BUS.log(i18n.L(f"已删除自定义套餐「{name}」",
+                           f"Deleted custom profile “{name}”"))
+            return self._json({"ok": True,
+                               "msg": i18n.L(f"已删除「{name}」", f"Deleted “{name}”")})
+        if act == "apply-custom-profile":
+            name = str((body or {}).get("name") or "").strip()
+            merged = load_config()
+            spec = (merged.get("custom_profiles") or {}).get(name)
+            if not isinstance(spec, dict) or not (spec.get("keys") or {}):
+                return self._json({"ok": False,
+                                   "msg": i18n.L("没有这个自定义套餐",
+                                                 "No such custom profile")})
+            merged["keys"] = spec["keys"]
+            clean = save_config(merged)
+            if ROLES:
+                ROLES.apply_config(_merge_defaults(clean))
+            n = len(clean["keys"])
+            BUS.log(i18n.L(f"已应用自定义套餐「{name}」（{n} 个按键）",
+                           f"Applied custom profile “{name}” ({n} keys)"))
+            return self._json({"ok": True,
+                               "msg": i18n.L(f"已应用「{name}」：{n} 个按键",
+                                             f"Applied “{name}”: {n} keys"),
+                               "data": {"keys": clean["keys"]}})
         if act == "apply-profile":
             import profiles
             app_id = str((body or {}).get("app") or "").strip()
@@ -2561,6 +2983,12 @@ class Handler(BaseHTTPRequestHandler):
             merged = load_config()
             merged["keys"] = keys
             if voice:
+                # 预设只给 mode/key/mods —— 自愈开关不是预设的一部分，得留着
+                voice = dict(voice)
+                _old_v = merged.get("voice") or {}
+                for _flag in ("auto_unstick", "auto_heal"):
+                    if _flag in _old_v:
+                        voice[_flag] = _old_v[_flag]
                 merged["voice"] = voice
             merged["profile"] = {"app": app_id, "ime": ime_id}
             clean = save_config(merged)
@@ -2807,34 +3235,10 @@ class Handler(BaseHTTPRequestHandler):
                 threading.Thread(target=follow_elevate_log, daemon=True).start()
             return self._json({"ok": ok, "msg": msg})
         if act == "restart-app":
-            # 「重启自己」：用**启动器那套优先级**挑解释器（优先 .venv），
-            # 拉起同样权限的新实例（--takeover 会结束旧的我），然后退出。
-            import ctypes
-            exe = best_pythonw()
-            params = f'"{os.path.join(HERE, "app.py")}" --silent --takeover'
-            try:
-                if is_elevated():
-                    rc = ctypes.windll.shell32.ShellExecuteW(None, "open", exe,
-                                                             params, HERE, 0)
-                else:
-                    rc = ctypes.windll.shell32.ShellExecuteW(None, "open", exe,
-                                                             params, HERE, 0)
-            except Exception as e:
-                return self._json({"ok": False, "msg": i18n.L(
-                    f"重启失败：{e!r}", f"Restart failed: {e!r}")})
-            if rc <= 32:
-                return self._json({"ok": False, "msg": i18n.L(
-                    f"重启失败（返回码 {rc}）",
-                    f"Restart failed (return code {rc})")})
-            BUS.log(i18n.L(
-                f"正在重启客户端（用 {os.path.basename(exe)} 拉起新实例）…",
-                f"Restarting the client (launching a new instance with "
-                f"{os.path.basename(exe)})…"))
-            threading.Thread(target=lambda: (time.sleep(2.5), os._exit(0)),
-                             daemon=True).start()
-            return self._json({"ok": True, "msg": i18n.L(
-                "正在重启，约 5 秒后刷新本页面",
-                "Restarting — refresh this page in about 5 seconds")})
+            # 「重启自己」：拉起同样权限的新实例（--takeover 会结束旧的我），然后退出。
+            # 具体逻辑在模块级 restart_client() 里 —— 语音会话自愈也走同一条路。
+            ok, msg = restart_client("manual")
+            return self._json({"ok": ok, "msg": msg})
         if act == "elevate":
             if is_elevated():
                 return self._json({"ok": True, "msg": i18n.L(
@@ -2966,7 +3370,88 @@ def our_instances(procs=None):
     return sorted(set(out))
 
 
+_LOCK_HANDLE = None     # Windows 命名互斥体句柄（单实例锁），进程退出时系统自动释放
+
+
+def foreground_exe():
+    """当前**前台窗口**所属进程的文件名（如 ``Code.exe``）；拿不到返回 ""。
+
+    只用 Win32（不用 WMI）：每秒轮询一次，必须够快、够安静。
+    GetForegroundWindow → 进程 ID → QueryFullProcessImageName（PROCESS_QUERY_LIMITED_INFORMATION，
+    普通权限也能读自身会话内的进程名）。
+    """
+    if os.name != "nt":
+        return ""
+    try:
+        import ctypes
+        from ctypes import wintypes
+        user32 = ctypes.WinDLL("user32", use_last_error=True)
+        k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        user32.GetForegroundWindow.restype = wintypes.HWND
+        user32.GetWindowThreadProcessId.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.DWORD)]
+        user32.GetWindowThreadProcessId.restype = wintypes.DWORD
+        k32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+        k32.OpenProcess.restype = wintypes.HANDLE
+        k32.QueryFullProcessImageNameW.argtypes = [wintypes.HANDLE, wintypes.DWORD,
+                                                   wintypes.LPWSTR, ctypes.POINTER(wintypes.DWORD)]
+        k32.QueryFullProcessImageNameW.restype = wintypes.BOOL
+        k32.CloseHandle.argtypes = [wintypes.HANDLE]
+        hwnd = user32.GetForegroundWindow()
+        if not hwnd:
+            return ""
+        pid = wintypes.DWORD()
+        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+        if not pid.value:
+            return ""
+        h = k32.OpenProcess(0x1000, False, pid.value)   # PROCESS_QUERY_LIMITED_INFORMATION
+        if not h:
+            return ""
+        try:
+            buf = ctypes.create_unicode_buffer(1024)
+            size = wintypes.DWORD(len(buf))
+            if not k32.QueryFullProcessImageNameW(h, 0, buf, ctypes.byref(size)):
+                return ""
+            return os.path.basename(buf.value)
+        finally:
+            k32.CloseHandle(h)
+    except Exception:
+        return ""
+
+
 def take_lock():
+    """单实例锁。返回锁对象（或 None 表示已有实例在跑）。
+
+    ★ 不要再用「固定 TCP 端口」当锁：原来用 49741，这个端口落在 Windows 的**动态
+      端口段**里，会被无关的系统服务抢走。真机就撞上了：services.exe 监听
+      0.0.0.0:49741 → bind 失败 → 客户端误以为"已有另一个实例在跑"，界面永远起不来，
+      看门狗每 5 分钟重试一次、每 5 分钟失败一次（日志里连刷了 9 条，按键/语音全都没了）。
+      改用**命名互斥体**：名字按程序目录取哈希，不占端口、不和任何程序冲突，
+      进程一退出自动释放。
+    """
+    global _LOCK_HANDLE
+    if _LOCK_HANDLE is not None:
+        return _LOCK_HANDLE
+    if os.name == "nt":
+        try:
+            import ctypes
+            from ctypes import wintypes
+            name = "Local\\VibeMote-" + hashlib.sha1(
+                os.path.normcase(HERE).encode("utf-8")).hexdigest()[:16]
+            k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+            k32.CreateMutexW.argtypes = [wintypes.LPVOID, wintypes.BOOL, wintypes.LPCWSTR]
+            k32.CreateMutexW.restype = wintypes.HANDLE
+            h = k32.CreateMutexW(None, False, name)
+            err = ctypes.get_last_error()
+            if not h:
+                raise OSError(err, "CreateMutexW failed")
+            if err == 183:          # ERROR_ALREADY_EXISTS：确实已经有一个实例
+                k32.CloseHandle(h)
+                return None
+            _LOCK_HANDLE = h
+            return h
+        except Exception:
+            # 互斥体这条路出问题就退回端口锁 —— 宁可退化，也不能起不来。
+            pass
     s = socket.socket()
     try:
         s.bind(("127.0.0.1", LOCK_PORT))
@@ -3011,6 +3496,10 @@ def main():
                     help="只检查本目录模块能否 import（构建离线包时用），不启动任何东西")
     ap.add_argument("--takeover", action="store_true",
                     help="接管正在运行的实例（管理员重启时用）")
+    # --supervise PID：重启监督进程（见 supervise_restart）。它自己不起界面，
+    # 只等 PID 退出，然后用启动器拉起一份干净的客户端。
+    ap.add_argument("--supervise", type=int, default=0, metavar="PID",
+                    help="内部用：等 PID 退出后重新拉起客户端（重启监督进程）")
     # --boot：这一份是**开机自启**拉起来的（不是用户双击启动器）。
     # 它专门用来关掉"自动弹 UAC 装虚拟声卡"那条路 —— 开机时用户不在电脑前，
     # 弹了也没人点，还会变成每次开机都弹一次（用户完全不知道是谁要权限）。
@@ -3020,8 +3509,10 @@ def main():
 
     if args.selftest:
         return _selftest()
+    if args.supervise:
+        return supervise_restart(args.supervise)
 
-    global ROLES
+    global ROLES, JUST_HEALED
     cfg = load_config()
     # 语言要在启动任何会说话的东西之前定好（角色备注、启动日志都按它出）
     i18n.load_from_config()
@@ -3102,14 +3593,33 @@ def main():
                         webbrowser.open(url)
                 return 0
             time.sleep(0.25)
-        BUS.log(i18n.L("已有另一个实例在跑，但界面端口没起来。先关掉旧实例再试。",
-                       "Another instance is already running, but its UI port is not up. "
-                       "Close the old instance and try again."))
+        left = our_instances()
+        BUS.log(i18n.L(
+            f"已有另一个实例在跑，但界面端口没起来（实例 PID：{left or '看不到'}）。"
+            f"先关掉旧实例再试。",
+            f"Another instance is already running, but its UI port is not up "
+            f"(instance PID: {left or 'not visible'}). Close the old instance and try again."))
         return 1
 
     BUS.log("=" * 58)
     BUS.log(i18n.L("  遥控器客户端 启动", "  VibeMote client starting"))
     BUS.log("=" * 58)
+
+    # 自愈交接条（见 HEALED_MARK）：刚才是不是"语音会话自愈"把我拉起来的？
+    # 只认 3 分钟内的，读完就删 —— 手动启动的进程不该继承这个身份。
+    try:
+        with open(HEALED_MARK, encoding="utf-8") as f:
+            JUST_HEALED = time.time() - float(f.read().strip()) < 180
+    except Exception:
+        JUST_HEALED = False
+    try:
+        os.remove(HEALED_MARK)
+    except OSError:
+        pass
+    if JUST_HEALED:
+        BUS.log(i18n.L("语音：本进程由「会话自愈」重新拉起 —— 头几次枚举还缺 ATVV 属正常。",
+                       "Voice: this process was relaunched by session self-heal — it is normal "
+                       "for the first few enumerations to still lack ATVV."))
 
     # 上一次「退出后再删」的结果。那条路是**分离进程**干的，当时没法回报成功没有 ——
     # 它会留下一个结果文件，这里读出来如实说（否则"报成功其实没删掉"会重演：
