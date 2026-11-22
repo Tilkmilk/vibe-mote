@@ -50,7 +50,7 @@ if HERE not in sys.path:
 import i18n  # noqa: E402  （必须在 sys.path 之后就位）
 
 APP_NAME = "VibeMote"
-APP_VERSION = "1.3.0"          # 报 bug 时请带上这个版本号（界面「设置 → 界面」能看到）
+APP_VERSION = "1.3.1"          # 报 bug 时请带上这个版本号（界面「设置 → 界面」能看到）
 WEB = os.path.join(HERE, "web")
 CONFIG = os.path.join(HERE, "config.json")
 REQUIREMENTS = os.path.join(HERE, "requirements.txt")
@@ -1356,6 +1356,14 @@ def restart_client(reason="manual"):
                 f.write(str(time.time()))
         except OSError:
             pass
+    # ★ 退出前先把 BLE 连接干净断开：旧进程直接 os._exit 时，遥控器会一直
+    #   攥着这条链路直到 BLE 监督超时（真机约 30 秒），新进程在这期间只能拿到
+    #   残缺服务表（6 个服务、没有 ab5e…）——"重启后语音还要等半分钟"就是它。
+    try:
+        if ROLES and getattr(ROLES, "voice", None):
+            ROLES.voice.close_connection_blocking(1.5)
+    except Exception:
+        pass
     with _RESTART_LOCK:
         if _RESTARTING:
             return False, i18n.L("已经在重启了", "Already restarting")

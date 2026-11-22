@@ -993,6 +993,33 @@ class VoiceRole(threading.Thread):
         self.voice_spec = spec or self.voice_spec
         self.voice = VoiceKey(self.voice_spec)
 
+    def close_connection_blocking(self, timeout=1.5):
+        """给「重启客户端」用：在进程退出前把当前 GATT 连接**干净断开**。
+
+        不断开的话，BLE 链路要等监督超时（真机约 30 秒）才释放，新进程在这期间
+        只能拿到残缺服务表 —— 这就是"重启后语音还要等半分钟"的根源。
+        从语音线程自己调用（自愈路径）时直接返回：那时连接已经先关过了，
+        而且在同一个事件循环里等自己会卡死。
+        """
+        if self is threading.current_thread():
+            return
+        loop = getattr(self, "_loop", None)
+        if loop is None or loop.is_closed():
+            return
+        ev = threading.Event()
+
+        async def _do():
+            try:
+                await self._close_current()
+            finally:
+                ev.set()
+
+        try:
+            loop.call_soon_threadsafe(lambda: asyncio.ensure_future(_do()))
+            ev.wait(timeout)
+        except Exception:
+            pass
+
     # ---------- 线程主体 ----------
     def run(self):
         try:
@@ -1373,7 +1400,19 @@ class VoiceRole(threading.Thread):
             self.misses += 1
             self._log(f"语音：缺少 ATVV 特征（本次枚举到 {len(uuids)} 个服务："
                       f"{', '.join(uuids) or '空'}）")
-            healed = self.misses >= 3 and self._maybe_auto_heal(len(uuids))
+            healed = False
+            if self.misses >= 3:
+                # ★ 自愈重启前先把这条 GATT 连接**干净地断开**。
+                #   真机日志（2026-11-22）：重启后新进程连续 8 次只拿到 6 个服务
+                #   （含 ae40 / d343bfc0、没有 ab5e），整整 30 秒才恢复 —— 这不是新
+                #   进程的毛病，而是**旧进程直接 os._exit、没断开的 BLE 链路要等 BLE
+                #   监督超时（约 30 秒）才释放**；这期间遥控器只给"第二客户端"的残缺
+                #   服务表。先 disconnect 再重启，新进程一开始就能协商出完整表。
+                try:
+                    await self._close_current()
+                except Exception:
+                    pass
+                healed = self._maybe_auto_heal(len(uuids))
             if (self.misses >= 3 and not healed
                     and not getattr(self, "_heal_pending", False)):
                 if self._ever_ok:
@@ -1500,7 +1539,9 @@ class VoiceRole(threading.Thread):
             if n < 20:
                 # 按键通了、但遥控器没送音频 —— 这是另一类问题（没真正进录音态），
                 # 跟「语音键读不到」完全不是一回事，日志里必须分开说。
-                self._log("语音：⚠ 音频帧太少 —— 遥控器没在送音频（多半没真正进录音态）")
+                # 刚连上那十几秒里常见：ATVV 链路刚建立，遥控器自己还没进录音态。
+                self._log("语音：⚠ 音频帧太少 —— 遥控器没在送音频（多半没真正进录音态；"
+                          "刚连上时等 1～2 秒再按，或换新电池后重试）")
             elif self.sink is None:
                 self._log("语音：⚠ 音频出口还没就绪，这段没送出去（看护任务正在重试）")
         elif b[0] not in (0x00,):
