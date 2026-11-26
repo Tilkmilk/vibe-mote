@@ -50,7 +50,7 @@ if HERE not in sys.path:
 import i18n  # noqa: E402  （必须在 sys.path 之后就位）
 
 APP_NAME = "VibeMote"
-APP_VERSION = "1.3.1"          # 报 bug 时请带上这个版本号（界面「设置 → 界面」能看到）
+APP_VERSION = "1.3.2"          # 报 bug 时请带上这个版本号（界面「设置 → 界面」能看到）
 WEB = os.path.join(HERE, "web")
 CONFIG = os.path.join(HERE, "config.json")
 REQUIREMENTS = os.path.join(HERE, "requirements.txt")

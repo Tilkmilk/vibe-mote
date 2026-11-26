@@ -916,6 +916,10 @@ class VoiceRole(threading.Thread):
             self._log(i18n.L(f"语音：⚠ 自动解卡没能把蓝牙开回来（{detail}）",
                              f"Voice: ⚠ auto-unstick could not turn Bluetooth back on ({detail})"))
         self._poke.set()                    # 立刻再试一次连接
+        # ★ 电台刚重启过，把「失败次数」清零：否则下一轮还按旧的 45 秒退避等 ——
+        #   真机日志里关开蓝牙成功后，下一次重试反而等了 66 秒，用户看到的就是
+        #   "解卡解了个寂寞"。清零后按 6 秒节奏再试几轮，遥控器一醒就能接上。
+        self._fails = 0
 
     def _maybe_auto_heal(self, n_services):
         """连得上、但服务表里没有 ATVV → **会话自愈**：重启整个客户端。
